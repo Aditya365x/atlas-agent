@@ -1,0 +1,91 @@
+# Full production-like stack:  docker compose up --build   ->  UI http://localhost:3000  API http://localhost:8000/docs
+name: atlas
+
+x-backend-env: &backend-env
+  ENVIRONMENT: ${ENVIRONMENT:-dev}
+  DATABASE_URL: postgresql+asyncpg://atlas:atlas@postgres:5432/atlas
+  REDIS_URL: redis://redis:6379/0
+  QUEUE_BACKEND: arq
+  SANDBOX_BACKEND: http
+  SANDBOX_URL: http://sandbox:8080
+  SANDBOX_TOKEN: ${SANDBOX_TOKEN:-dev-sandbox-token}
+  JWT_SECRET: ${JWT_SECRET:-change-me-in-production-please-32b+}
+  CORS_ORIGINS: '["http://localhost:3000"]'
+  LLM_MODE: ${LLM_MODE:-live}
+  MODEL_MAIN: ${MODEL_MAIN:-gemini/gemini-2.5-flash}
+  MODEL_PLANNER: ${MODEL_PLANNER:-}
+  MODEL_FALLBACKS: ${MODEL_FALLBACKS:-[]}
+  EMBEDDING_MODEL: ${EMBEDDING_MODEL:-}
+  GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+  OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+  ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+  DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+  GROQ_API_KEY: ${GROQ_API_KEY:-}
+  TAVILY_API_KEY: ${TAVILY_API_KEY:-}
+  LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-}
+  LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}
+  LANGFUSE_HOST: ${LANGFUSE_HOST:-}
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment: { POSTGRES_USER: atlas, POSTGRES_PASSWORD: atlas, POSTGRES_DB: atlas }
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck: { test: ["CMD-SHELL", "pg_isready -U atlas"], interval: 5s, retries: 10 }
+    networks: [backend]
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes: [redisdata:/data]
+    healthcheck: { test: ["CMD", "redis-cli", "ping"], interval: 5s, retries: 10 }
+    networks: [backend]
+
+  sandbox:
+    build: { context: ., dockerfile: sandbox/Dockerfile }
+    environment: { SANDBOX_TOKEN: "${SANDBOX_TOKEN:-dev-sandbox-token}" }
+    read_only: true
+    tmpfs: ["/tmp:size=256m"]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    pids_limit: 128
+    mem_limit: 1g
+    cpus: 1.0
+    networks: [sandbox_net]  # internal-only network: no route to the internet or to Postgres/Redis
+
+  api:
+    build: ./backend
+    environment: *backend-env
+    ports: ["8000:8000"]
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      sandbox: { condition: service_started }
+    networks: [backend, sandbox_net, egress]
+
+  worker:
+    build: ./backend
+    command: ["arq", "app.worker.WorkerSettings"]
+    environment: *backend-env
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    deploy: { replicas: 2 }
+    networks: [backend, sandbox_net, egress]
+
+  web:
+    build:
+      context: ./frontend
+      args: { NEXT_PUBLIC_API_URL: "http://localhost:8000" }
+    ports: ["3000:3000"]
+    depends_on: [api]
+    networks: [egress]
+
+networks:
+  backend: { internal: true }
+  sandbox_net: { internal: true }
+  egress: {}
+
+volumes:
+  pgdata:
+  redisdata:

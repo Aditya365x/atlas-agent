@@ -1,0 +1,46 @@
+# Render blueprint: API + worker + web + Postgres (pgvector) + Redis
+databases:
+  - name: atlas-db
+    plan: basic-256mb
+    databaseName: atlas
+    user: atlas
+
+services:
+  - type: keyvalue
+    name: atlas-redis
+    plan: starter
+    ipAllowList: []
+    maxmemoryPolicy: noeviction
+
+  - type: web
+    name: atlas-api
+    runtime: docker
+    rootDir: backend
+    healthCheckPath: /readyz
+    envVars: &backend
+      - { key: ENVIRONMENT, value: prod }
+      - { key: QUEUE_BACKEND, value: arq }
+      - { key: SANDBOX_BACKEND, value: local }
+      - { key: MODEL_MAIN, value: gemini/gemini-2.5-flash }
+      - { key: JWT_SECRET, generateValue: true }
+      - { key: CORS_ORIGINS, value: '["https://atlas-web.onrender.com"]' }
+      - { key: GEMINI_API_KEY, sync: false }
+      - { key: TAVILY_API_KEY, sync: false }
+      - key: DATABASE_URL
+        fromDatabase: { name: atlas-db, property: connectionString }
+      - key: REDIS_URL
+        fromService: { type: keyvalue, name: atlas-redis, property: connectionString }
+
+  - type: worker
+    name: atlas-worker
+    runtime: docker
+    rootDir: backend
+    dockerCommand: arq app.worker.WorkerSettings
+    envVars: *backend
+
+  - type: web
+    name: atlas-web
+    runtime: docker
+    rootDir: frontend
+    envVars:
+      - { key: NEXT_PUBLIC_API_URL, value: https://atlas-api.onrender.com }
