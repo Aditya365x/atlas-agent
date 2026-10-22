@@ -212,6 +212,10 @@ loadtest/             k6 script
 - OpenTelemetry traces across API, worker and tools
 - Alembic migrations (additive columns are applied on startup today)
 
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md) for everything added in 1.1.
+
 ## License
 
 MIT
