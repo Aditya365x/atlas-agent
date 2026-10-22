@@ -64,7 +64,12 @@ def test_openrouter_prices_are_registered_so_budgets_work():
     from app.llm import register_openrouter_prices
 
     catalog = [
-        {"id": "acme/new-model-x", "pricing": {"prompt": "0.0000001", "completion": "0.00000035"}, "context_length": 1000, "supported_parameters": ["tools"]}
+        {
+            "id": "acme/new-model-x",
+            "pricing": {"prompt": "0.0000001", "completion": "0.00000035"},
+            "context_length": 1000,
+            "supported_parameters": ["tools"],
+        }
     ]
     done = register_openrouter_prices(["openrouter/acme/new-model-x", "openrouter/acme/missing", "gemini/x"], fetch=lambda: catalog)
     assert done == ["openrouter/acme/new-model-x"]

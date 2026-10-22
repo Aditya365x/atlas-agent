@@ -1,18 +1,21 @@
 name: Live evals
 
-# Full eval suite against real models. Runs nightly and on demand; needs repository secrets.
+# Full eval suite against real models. Runs on demand, and nightly once the repository variable
+# RUN_LIVE_EVALS=true and a key secret (OPENROUTER_API_KEY or GEMINI_API_KEY) are set; skipped otherwise.
 on:
   workflow_dispatch:
     inputs:
-      model: { description: "LiteLLM model string", default: "gemini/gemini-2.5-flash" }
+      model: { description: "LiteLLM model string", default: "openrouter/inception/mercury-3" }
   schedule: [{ cron: "30 21 * * *" }]  # 03:00 IST
 
 jobs:
   live:
+    if: ${{ github.event_name == 'workflow_dispatch' || vars.RUN_LIVE_EVALS == 'true' }}
     runs-on: ubuntu-latest
     env:
       LLM_MODE: live
-      MODEL_MAIN: ${{ inputs.model || 'gemini/gemini-2.5-flash' }}
+      MODEL_MAIN: ${{ inputs.model || 'openrouter/inception/mercury-3' }}
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
