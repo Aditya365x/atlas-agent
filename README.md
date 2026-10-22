@@ -8,6 +8,8 @@ Atlas takes a task, plans it, searches the web, reads pages and PDFs, runs Pytho
 
 It is built like a production service, not a notebook demo: durable background runs, resumable streaming, multi-provider model routing with fallbacks, per-user and global budgets, prompt-injection and output guardrails, SSRF protection, Prometheus metrics, 51 automated tests, two eval suites in CI, and a one-command cloud deployment.
 
+**Stack:** Python 3.12 · FastAPI · LangGraph · LiteLLM (OpenRouter, Gemini, OpenAI, Anthropic...) · PostgreSQL + pgvector · Redis Streams + arq · MCP (official SDK) · Next.js 16 + React 19 · React Bits · Docker · Azure Container Apps · GitHub Actions
+
 ![Atlas home screen](docs/screenshots/home.png)
 
 ## What it does for a business
@@ -46,7 +48,7 @@ flowchart LR
   W -- events --> S[(Redis Streams)]
   S -- replay / follow --> API
   W --> G{{LangGraph agent}}
-  G --> R[LiteLLM router] --> P[Gemini / OpenAI / Claude / DeepSeek / Groq ...]
+  G --> R[LiteLLM router] --> P[OpenRouter: Inception Mercury, Claude, GPT ...<br/>or Gemini / OpenAI / Anthropic direct]
   G --> T1[web_search / fetch_url]
   G --> T2[python_exec] --> SB[Sandbox<br/>no network, rlimits]
   G --> T3[file_search] --> PG[(Postgres<br/>pgvector + BM25)]
@@ -108,7 +110,7 @@ Read this honestly: with the dependency-free hashing embedder, the "dense" retri
 ## Quick start
 
 ```bash
-cp .env.example .env                 # add GEMINI_API_KEY (free tier works), or set LLM_MODE=fake to run offline
+cp .env.example .env                 # add OPENROUTER_API_KEY or GEMINI_API_KEY, or set LLM_MODE=fake to run offline
 docker compose up --build            # UI http://localhost:3000, API http://localhost:8000/docs
 ```
 
@@ -123,10 +125,24 @@ cd frontend && npm install && npm run dev
 
 ```bash
 az login
-OPENROUTER_API_KEY=... ./deploy/azure.sh  # or GEMINI_API_KEY=...; Azure Container Apps + Postgres, ~15 minutes
+./deploy/azure.sh                    # asks for an OpenRouter key (hidden input) and verifies it; ~15 minutes the first time
+SKIP_BUILD=1 ./deploy/azure.sh       # config-only change (e.g. a new key): reuse the last images, ~2 minutes
 ```
 
-The script builds both images in Azure Container Registry, creates Postgres with pgvector, and runs the API, an arq worker and Redis as one Container App, plus the web app. Re-running it ships new code. Without a key it deploys the offline demo model; re-run with the key to go live. [docs/DEPLOY.md](docs/DEPLOY.md) also covers Render and Vercel.
+The script builds both images in Azure Container Registry, creates Postgres with pgvector, and runs the API, an arq worker and Redis as one Container App, plus the web app. It is idempotent: re-running it ships new code and keeps the stored key and the chosen model. Without a key it deploys the offline demo model. `GEMINI_API_KEY=...` works instead of OpenRouter. [docs/DEPLOY.md](docs/DEPLOY.md) also covers Render and Vercel. Tear everything down with `az group delete -n atlas-rg`.
+
+### Switch models without redeploying
+
+One OpenRouter key covers every `openrouter/...` model, so changing models is a setting, not a rebuild (about a minute, link unchanged):
+
+```bash
+./deploy/set-model.sh --list mercury                          # tool-capable models with prices; filter: claude, gpt, gemini, llama...
+./deploy/set-model.sh openrouter/anthropic/claude-haiku-5.5   # switch the main model
+./deploy/set-model.sh openrouter/openai/gpt-5-mini openrouter/inception/mercury-2.5   # main + cheaper planner
+./deploy/set-model.sh --show                                  # what is live now
+```
+
+It rejects unknown models and models without tool calling before touching the deployment, and keeps the previous model as the automatic fallback. Prices for new OpenRouter models are pulled from OpenRouter at startup, so cost tracking and the spend caps keep working for models LiteLLM does not know yet.
 
 ## Use Atlas from an MCP client
 
@@ -146,7 +162,8 @@ All settings are environment variables ([`backend/app/config.py`](backend/app/co
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `MODEL_MAIN` / `MODEL_PLANNER` / `MODEL_FALLBACKS` | `gemini/gemini-2.5-flash` / main / `[]` | Any LiteLLM model strings |
+| `MODEL_MAIN` / `MODEL_PLANNER` / `MODEL_FALLBACKS` | `gemini/gemini-2.5-flash` / main / `[]` | Any LiteLLM model string. The Azure deploy defaults to `openrouter/inception/mercury-3` with `mercury-2.5` as planner and fallback |
+| `OPENROUTER_API_KEY` / `GEMINI_API_KEY` | none | Provider keys (one OpenRouter key reaches hundreds of models) |
 | `EMBEDDING_MODEL` | local hashing | e.g. `gemini/gemini-embedding-001` |
 | `RETRIEVAL_MODE` / `RERANK` | `hybrid` / `none` | `hybrid`, `vector`, `lexical`; `llm` or e.g. `cohere/rerank-v3.5` |
 | `MCP_SERVERS` / `ENABLE_MCP_SERVER` | `[]` / `true` | MCP client servers / expose `/mcp` |
@@ -170,7 +187,8 @@ backend/app/
   samples/            Northwind knowledge base + sales and support-ticket datasets
 frontend/             Next.js UI built with React Bits components (PromptBar, ThoughtLine, ShinyText, BlurText, SpotlightCard, Threads)
 evals/                agent task suite, retrieval eval + labelled queries, harness
-deploy/azure.sh       one-command Azure deployment
+deploy/azure.sh       one-command Azure deployment (idempotent, key check, SKIP_BUILD fast path)
+deploy/set-model.sh   switch the live model in a minute
 loadtest/             k6 script
 ```
 
