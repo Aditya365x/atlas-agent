@@ -37,6 +37,12 @@ async def fresh_env(monkeypatch):
         async with db.get_engine().begin() as conn:
             await conn.run_sync(Base.metadata.drop_all)
     await db.init_db()
+    if os.environ.get("REDIS_URL"):  # rate-limit counters and streams must not leak between tests
+        import redis.asyncio as aioredis
+
+        r = aioredis.from_url(os.environ["REDIS_URL"])
+        await r.flushdb()
+        await r.aclose()
     yield
     await db.dispose_db()
     get_settings.cache_clear()

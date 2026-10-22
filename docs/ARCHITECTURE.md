@@ -66,14 +66,36 @@ The system prompt states that this content is data and must not be followed. Any
 - Chunking: paragraph-aware, 1200 characters with 200 overlap, hard split for giant paragraphs.
 - Embeddings: any LiteLLM embedding model, truncated to 384 dimensions (Matryoshka-style) and renormalised, or a local feature-hashing embedder that needs no network.
 - Storage: chunks keep a portable JSON copy of the vector; on Postgres the `vector(384)` column and an HNSW cosine index are added at startup.
-- Query: ANN pre-selects 40 candidates, then hybrid re-ranking `0.7 * cosine + 0.3 * lexical overlap`. The lexical term rescues exact strings (error codes, names, numbers) that embeddings blur.
+- Query: two retrievers run on every search. Dense: pgvector HNSW (exact cosine elsewhere). Lexical: BM25, implemented with Postgres full-text search (`to_tsvector` + a GIN index, OR-ed query terms) in production and an in-process Okapi BM25 elsewhere. The two rankings are fused with **Reciprocal Rank Fusion** (`score = sum 1/(60 + rank)`).
+- Rerank (optional): `RERANK=llm` asks the planner model for a listwise ranking of the fused top 20; `RERANK=cohere/rerank-v3.5` (or any LiteLLM rerank model) uses a hosted cross-encoder. Any reranker failure falls back to the fused order.
 - Every query is filtered by `user_id`.
 
-## 7. Data model
+**Why RRF rather than a weighted score sum?** Cosine similarities and BM25 scores live on different, query-dependent scales, so a fixed `0.7/0.3` mix silently changes meaning from query to query. RRF only uses ranks, needs no calibration, and is what most production hybrid search uses.
+
+**Measured, not assumed.** `evals/retrieval_eval.py` indexes the Northwind knowledge base and scores 44 labelled queries (paraphrases, keyword queries, exact error codes) per retriever with recall@1/3/5, MRR and nDCG@5. With the offline hashing embedder BM25 alone beats hybrid, because hashing "embeddings" are really lexical features; with a real embedding model the dense side adds the paraphrase recall BM25 misses. That result is why `EMBEDDING_MODEL` matters and why the retriever mode is a setting (`RETRIEVAL_MODE=hybrid|vector|lexical`) rather than hard-coded. CI fails if hybrid recall@5 drops below 0.85.
+
+**Data files are also data.** Uploads of CSV/XLSX/JSON/TXT up to 10 MB keep their raw bytes. `python_exec` mounts the caller's files into the sandbox working directory, so the agent computes answers with pandas instead of guessing numbers from retrieved text chunks. The file list is part of the system prompt, so the model knows what it can load.
+
+## 7. MCP: both directions
+
+**Server.** `/mcp` is a Streamable HTTP MCP endpoint (official `mcp` SDK, stateless mode so any API replica can answer). It exposes `run_task`, `search_documents` and `list_documents`. A small ASGI wrapper verifies the same JWT as the REST API and binds the caller for the tool call, so an MCP client gets exactly the user's data, rate limit, daily quota and run budgets, nothing more. `run_task` goes through the same admission path (`start_run`) as `POST /v1/runs` and waits on the run's event stream.
+
+**Client.** `MCP_SERVERS` lists external servers. Their tools are discovered at run start (listing cached for five minutes), namespaced as `server__tool`, and added to the registry next to the built-in tools. Remote output is untrusted content and goes through the prompt-injection guard. An unreachable server is logged and skipped; it never fails a run. `allow` limits which remote tools are exposed.
+
+**Why both?** The server makes Atlas composable (another agent or an IDE can delegate whole tasks to it). The client means new capabilities (a CRM, a ticketing system, internal docs) are configuration, not code.
+
+## 8. Context engineering, guardrails and cost control
+
+- **Context budget.** Before each model call, if the transcript exceeds `MAX_CONTEXT_CHARS`, older tool outputs are cut to a 600-character head with a marker, keeping the system prompt, user turns and the four most recent tool results verbatim. Tool output is the bulkiest and least reused part of the context. A `context.compacted` event is emitted so the UI shows it happened.
+- **Output guard.** The final answer is scanned for credential patterns (OpenAI/Anthropic/Google keys, GitHub tokens, AWS keys, private keys, JWTs) and they are masked before the answer is stored or returned. Input defense (section 5) stops instructions coming in; this stops secrets going out.
+- **Effort presets.** Each run picks `fast` (3 steps, 4 tool calls, no self-review), `balanced` (defaults) or `deep` (14 steps, 24 tool calls, self-review). That makes the latency/cost/quality trade-off explicit per request.
+- **Budgets for a public demo.** One-click guest accounts get a smaller daily allowance; a global daily cap (`GLOBAL_DAILY_COST_USD`) returns 503 for new runs once the whole deployment has spent it, which protects the model key behind a public link.
+
+## 9. Data model
 
 `users`, `conversations`, `messages` (with `run_id` and a JSON `meta` holding trace, images, sources, usage), `runs` (status, tokens, cost, latency, models used), `documents`, `chunks`. Runs and messages are separate so a failed or cancelled run leaves the conversation clean and still shows up in stats.
 
-## 8. Failure handling
+## 10. Failure handling
 
 | Failure | Behaviour |
 |---|---|
@@ -84,7 +106,7 @@ The system prompt states that this content is data and must not be followed. Any
 | Runaway loop | Step, tool and cost caps force a final answer |
 | Postgres connection exhaustion | Bounded pool per process with a timeout; documented budget rule |
 
-## 9. What would change at larger scale
+## 11. What would change at larger scale
 
 - PgBouncer in transaction mode in front of Postgres.
 - Move chunk storage to a dedicated vector store only if per-user corpora grow past what HNSW on Postgres serves comfortably.

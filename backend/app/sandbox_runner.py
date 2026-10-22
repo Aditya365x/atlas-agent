@@ -30,9 +30,11 @@ def _limits(cpu_s: int) -> None:
     resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
 
 
-def _collect_images(tmp: str) -> list[dict]:
+def _collect_images(tmp: str, skip: set[str]) -> list[dict]:
     images = []
     for p in sorted(Path(tmp).rglob("*")):
+        if p.name in skip:
+            continue
         if p.suffix.lower() in _MIME and p.is_file() and p.stat().st_size <= MAX_IMAGE_BYTES:
             images.append({"name": p.name, "mime": _MIME[p.suffix.lower()], "b64": base64.b64encode(p.read_bytes()).decode()})
             if len(images) >= MAX_IMAGES:
@@ -45,8 +47,20 @@ def _clip(s: bytes) -> str:
     return text if len(text) <= MAX_OUTPUT else text[:MAX_OUTPUT] + f"\n...[truncated {len(text) - MAX_OUTPUT} chars]"
 
 
-async def run_python(code: str, timeout_s: int = 20) -> dict:
+def _safe_name(name: str) -> str:
+    base = Path(name).name.lstrip(".")
+    return base if base and base != "main.py" else f"file_{abs(hash(name)) % 10_000}"
+
+
+async def run_python(code: str, timeout_s: int = 20, files: dict[str, bytes] | None = None) -> dict:
+    """Run `code` in a fresh directory. `files` (name -> bytes) are written next to the script first,
+    so user data can be read with e.g. pd.read_csv('sales.csv')."""
     with tempfile.TemporaryDirectory(prefix="atlas-sbx-") as tmp:
+        inputs = set()
+        for name, data in (files or {}).items():
+            safe = _safe_name(name)
+            (Path(tmp) / safe).write_bytes(data)
+            inputs.add(safe)
         script = Path(tmp) / "main.py"
         script.write_text(code, encoding="utf-8")
         env = {
@@ -79,7 +93,7 @@ async def run_python(code: str, timeout_s: int = 20) -> dict:
             except ProcessLookupError:
                 pass
             out, err = await proc.communicate()
-        images = await asyncio.to_thread(_collect_images, tmp)
+        images = await asyncio.to_thread(_collect_images, tmp, inputs)
         return {
             "stdout": _clip(out),
             "stderr": _clip(err),

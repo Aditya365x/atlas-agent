@@ -44,7 +44,11 @@ class Settings(BaseSettings):
     max_tool_calls_per_run: int = 12
     max_run_cost_usd: float = 0.25
     daily_user_cost_usd: float = 2.0
+    guest_daily_cost_usd: float = 0.25  # one-click demo accounts get a smaller allowance
+    global_daily_cost_usd: float = 25.0  # hard stop for the whole deployment (protects a public demo key); 0 = off
     enable_reflection: bool = True
+    # Context engineering: above this many characters of conversation, older tool outputs are compacted
+    max_context_chars: int = 60_000
 
     # --- tools ---
     tavily_api_key: str | None = None
@@ -54,6 +58,16 @@ class Settings(BaseSettings):
     e2b_api_key: str | None = None
     sandbox_timeout_s: int = 20
     max_upload_mb: int = 15
+    max_data_file_mb: int = 10  # uploads up to this size are also kept raw so python_exec can load them
+
+    # --- retrieval ---
+    retrieval_mode: Literal["hybrid", "vector", "lexical"] = "hybrid"  # hybrid = vector + BM25 fused with RRF
+    rerank: str = "none"  # none | llm (listwise rerank with the planner model) | any LiteLLM rerank model, e.g. cohere/rerank-v3.5
+
+    # --- MCP ---
+    enable_mcp_server: bool = True  # exposes Atlas as an MCP server at /mcp
+    mcp_servers: list[dict] = Field(default_factory=list)  # external MCP servers whose tools Atlas may use:
+    # [{"name": "docs", "url": "https://example.com/mcp", "headers": {"Authorization": "Bearer ..."}}]
 
     # --- rate limiting ---
     rate_limit_per_minute: int = 20

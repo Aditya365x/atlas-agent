@@ -10,3 +10,8 @@ node_modules/
 .next/
 *.tsbuildinfo
 frontend/next-env.d.ts
+deploy/.azure-state
+deploy/.atlas-api.yaml
+.t.sh
+.venv/
+venv/

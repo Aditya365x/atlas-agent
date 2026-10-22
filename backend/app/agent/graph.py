@@ -23,6 +23,7 @@ from typing import Any, TypedDict
 from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END, StateGraph
 
+from app.agent.guard import redact_secrets
 from app.agent.prompts import CRITIC_PROMPT, PLANNER_PROMPT, system_prompt
 from app.config import Settings
 from app.llm import LLM, LLMResult
@@ -90,6 +91,27 @@ def parse_json_obj(text: str) -> dict[str, Any] | None:
         return None
 
 
+def compact_messages(messages: list[dict[str, Any]], budget_chars: int, keep_recent: int = 4) -> tuple[list[dict[str, Any]], int]:
+    """Context engineering: when the transcript outgrows the budget, shrink older tool outputs first
+    (they are bulky and mostly already distilled into the agent's reasoning). The system prompt, user turns
+    and the most recent `keep_recent` tool outputs are kept verbatim. Returns (messages, chars_saved)."""
+    total = sum(len(str(m.get("content") or "")) for m in messages)
+    if total <= budget_chars:
+        return messages, 0
+    tool_idx = [i for i, m in enumerate(messages) if m["role"] == "tool"]
+    out, saved = list(messages), 0
+    for i in tool_idx[:-keep_recent] if keep_recent else tool_idx:
+        content = str(out[i].get("content") or "")
+        if len(content) <= 800:
+            continue
+        short = content[:600] + f"\n...[compacted: {len(content) - 600} chars of older tool output omitted to save context]"
+        out[i] = {**out[i], "content": short}
+        saved += len(content) - len(short)
+        if total - saved <= budget_chars:
+            break
+    return out, saved
+
+
 # ------------------------------------- nodes -----------------------------------------
 
 
@@ -117,7 +139,9 @@ async def agent_node(state: AgentState, config: RunnableConfig) -> AgentState:
     stop_reason = state.get("stop_reason")
     if usage.get("cost_usd", 0) >= s.max_run_cost_usd and not force:
         force, stop_reason = True, "cost_budget"
-    messages = list(state["messages"])
+    messages, saved = compact_messages(list(state["messages"]), s.max_context_chars)
+    if saved:
+        await d.emit({"type": "context.compacted", "chars_saved": saved})
     if force:
         messages.append(
             {
@@ -266,10 +290,10 @@ def route_after_reflect(state: AgentState) -> str:
 
 
 async def finalize_node(state: AgentState, config: RunnableConfig) -> AgentState:
-    return {
-        "final": state.get("draft", "").strip() or "I wasn't able to produce an answer.",
-        "stop_reason": state.get("stop_reason") or "completed",
-    }
+    final, leaked = redact_secrets(state.get("draft", "").strip() or "I wasn't able to produce an answer.")
+    if leaked:
+        await _deps(config).emit({"type": "guard.flag", "tool": "output", "flags": [f"redacted_{x}" for x in leaked]})
+    return {"final": final, "stop_reason": state.get("stop_reason") or "completed"}
 
 
 def build_graph():
@@ -291,8 +315,8 @@ def build_graph():
 GRAPH = build_graph()
 
 
-async def run_agent(history: list[dict[str, Any]], query: str, deps: AgentDeps) -> AgentState:
-    messages = [{"role": "system", "content": system_prompt(deps.tools.names())}, *history, {"role": "user", "content": query}]
+async def run_agent(history: list[dict[str, Any]], query: str, deps: AgentDeps, files: list[str] | None = None) -> AgentState:
+    messages = [{"role": "system", "content": system_prompt(deps.tools.names(), files)}, *history, {"role": "user", "content": query}]
     initial: AgentState = {
         "messages": messages,
         "query": query,

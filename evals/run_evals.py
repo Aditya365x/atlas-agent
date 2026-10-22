@@ -137,7 +137,8 @@ async def main() -> int:
         reg.raise_for_status()
         headers = {"Authorization": f"Bearer {reg.json()['access_token']}"}
         for fx in sorted({t["fixture"] for t in tasks if t.get("fixture")}):
-            data = (ROOT / "fixtures" / fx).read_bytes()
+            path = ROOT / "fixtures" / fx
+            data = (path if path.exists() else ROOT.parent / "backend" / "app" / "samples" / fx).read_bytes()
             (await client.post("/v1/files", files={"file": (fx, data)}, headers=headers)).raise_for_status()
 
         sem = asyncio.Semaphore(args.concurrency)

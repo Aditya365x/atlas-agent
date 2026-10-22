@@ -1,41 +1,61 @@
 # Atlas: an autonomous agent that does the work and shows its route
 
-Atlas takes a task, plans it, searches the web, reads pages and PDFs, runs Python in a locked-down sandbox, searches your own uploaded documents, reviews its own answer, and streams every step to the UI as it happens.
+**Live demo: [atlas-web.graymeadow-875698b7.centralindia.azurecontainerapps.io](https://atlas-web.graymeadow-875698b7.centralindia.azurecontainerapps.io)** (one click, no sign-up) · [API docs](https://atlas-api.graymeadow-875698b7.centralindia.azurecontainerapps.io/docs) · MCP endpoint `https://atlas-api.graymeadow-875698b7.centralindia.azurecontainerapps.io/mcp`
 
-It is built like a production service, not a notebook demo: durable background runs, resumable streaming, multi-provider model routing with fallbacks, per-user budgets and rate limits, prompt-injection defenses, SSRF protection, Prometheus metrics, an eval harness in CI, and a containerised deployment.
+> Demo status: the deployment is running the deterministic offline model until a model key is added (`OPENROUTER_API_KEY=... ./deploy/azure.sh`). Tools, sandbox, retrieval, streaming and MCP are all live either way; the model badge at the top of the app shows which model is answering.
 
-![Atlas chat with the route of a completed task](docs/screenshots/chat.png)
+Atlas takes a task, plans it, searches the web, reads pages and PDFs, runs Python on your data in a locked-down sandbox, searches your documents with hybrid retrieval, reviews its own answer, and streams every step to a ChatGPT-style UI as it happens. It is also an **MCP server** (any MCP client can delegate tasks to it) and an **MCP client** (it can use tools from other MCP servers).
 
-## What it does
+It is built like a production service, not a notebook demo: durable background runs, resumable streaming, multi-provider model routing with fallbacks, per-user and global budgets, prompt-injection and output guardrails, SSRF protection, Prometheus metrics, 51 automated tests, two eval suites in CI, and a one-command cloud deployment.
 
-- **Plans, then acts.** A planner decides whether a request needs tools. Simple questions take a fast path with no tool schemas (cheaper and quicker); real tasks run the full loop.
-- **Uses tools in parallel.** Web search (Tavily, DuckDuckGo fallback), page and PDF reading, a Python code interpreter that returns charts, and hybrid search over the user's files.
-- **Checks itself.** A critic scores the draft against the evidence the agent gathered. Low scores trigger one revision.
-- **Shows its route.** Plan, every tool call with code and output, guard warnings and the self-review appear live as waypoints, and are saved with the answer.
-- **Stays inside budgets.** Hard caps on steps, tool calls and dollars per run, plus a daily spend limit per user.
+![Atlas home screen](docs/screenshots/home.png)
 
-![Prompt-injection attempt caught while reading a file](docs/screenshots/guard.png)
+## What it does for a business
+
+| Use case | What happens |
+|---|---|
+| **Analyse your data** | Upload a CSV/XLSX (or load the sample sales or support-ticket data). Atlas writes and runs pandas in the sandbox against the real file, returns numbers and charts, and shows the code. |
+| **Ask your company documents** | Upload policies, runbooks or API docs. Hybrid BM25 + vector search with rank fusion finds the passage, including exact identifiers such as error code `E-4031`, and the answer cites it. |
+| **Research with sources** | Searches the web, reads the best pages, and cites every claim. |
+| **Plug into other agents** | Connect Atlas to Claude Desktop, Cursor or your own agent over MCP and call `run_task`. |
+
+![The route: plan, tool calls with code and output, self-review](docs/screenshots/answer.png)
+
+## How this maps to what AI-engineering roles ask for
+
+| Skill | Where it lives in Atlas |
+|---|---|
+| Python, SQL, APIs, Git | FastAPI service, SQLAlchemy on Postgres (raw SQL for pgvector and full-text search), REST + SSE, CI on every push |
+| LLMs, embeddings | LiteLLM router over 100+ providers with retries and fallbacks; any embedding model, truncated Matryoshka-style to 384 dims |
+| Prompt and context engineering | Planner, actor and critic prompts; file inventory in the system prompt; automatic compaction of older tool output under a context budget |
+| RAG, hybrid search, reranking | pgvector HNSW + Postgres BM25, fused with Reciprocal Rank Fusion, optional LLM or cross-encoder rerank, measured by recall@k / MRR / nDCG |
+| Agents, LangGraph, MCP | Explicit LangGraph state machine (plan, act, tools, reflect, finalize); MCP server **and** client |
+| FastAPI, Docker, cloud | Multi-stage non-root images, docker compose for the whole stack, one-command Azure Container Apps deploy |
+| Evaluation, guardrails, observability | 25-task black-box eval with LLM judge; 44-query retrieval eval; prompt-injection, SSRF and secret-leak guards; Prometheus metrics, structured logs, Langfuse tracing |
+| Latency and cost optimisation | Fast path without tool schemas, cheaper planner model, per-run effort presets (Fast/Balanced/Deep), per-run, per-user and global spend caps, streaming time-to-first-token tracking |
+| AI system design | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): every major decision, the rejected alternative and the trade-off |
 
 ## Architecture
 
 ```mermaid
 flowchart LR
   UI[Next.js UI] -- REST + SSE --> API[FastAPI]
+  MC[MCP clients<br/>Claude, Cursor, agents] -- Streamable HTTP --> API
   API -- enqueue --> Q[(Redis queue)]
   Q --> W[arq workers]
   W -- events --> S[(Redis Streams)]
   S -- replay / follow --> API
   W --> G{{LangGraph agent}}
-  G --> R[LiteLLM router]
-  R --> P1[Gemini] & P2[DeepSeek] & P3[OpenAI / Claude / Groq ...]
+  G --> R[LiteLLM router] --> P[Gemini / OpenAI / Claude / DeepSeek / Groq ...]
   G --> T1[web_search / fetch_url]
-  G --> T2[python_exec] --> SB[Sandbox container<br/>no network, read-only FS]
-  G --> T3[file_search] --> PG[(Postgres + pgvector)]
+  G --> T2[python_exec] --> SB[Sandbox<br/>no network, rlimits]
+  G --> T3[file_search] --> PG[(Postgres<br/>pgvector + BM25)]
+  G --> T4[remote MCP tools]
   API --> PG
   W --> PG
 ```
 
-The agent itself is an explicit state machine:
+The agent is an explicit state machine:
 
 ```mermaid
 stateDiagram-v2
@@ -47,125 +67,118 @@ stateDiagram-v2
   agent --> finalize: draft (fast path / budget hit)
   reflect --> agent: score < 7, revise once
   reflect --> finalize
-  finalize --> [*]
+  finalize --> [*]: output guard
 ```
 
-More detail on each decision is in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+## Results
+
+All numbers below come from scripts in this repo; rerun them yourself.
+
+**Retrieval** (`python evals/retrieval_eval.py`): 44 labelled queries over the Northwind knowledge base (23 paraphrases, 18 keyword, 3 exact identifiers).
+
+| Retriever | Recall@1 | Recall@5 | MRR | nDCG@5 |
+|---|---|---|---|---|
+| Vector only (offline hashing embedder) | 0.36 | 0.66 | 0.500 | 0.510 |
+| BM25 only (Postgres full-text) | 0.68 | 0.95 | 0.778 | 0.822 |
+| Hybrid (RRF) | 0.55 | 0.93 | 0.703 | 0.757 |
+
+Read this honestly: with the dependency-free hashing embedder, the "dense" retriever is really a weak lexical one, so fusing it in costs BM25 some precision. Identifier and keyword queries are already at 1.00 recall@5 with BM25 and hybrid; paraphrases are where a real embedding model earns its place. Run `EMBEDDING_MODEL=gemini/gemini-embedding-001 python evals/retrieval_eval.py` (and `--rerank llm`) to measure the semantic configuration. The point of the harness is that this choice is made on numbers, per corpus.
+
+**Agent evals** (`python evals/run_evals.py`): 25 black-box tasks across computation, data analysis, RAG, research, direct answers and security (file-borne prompt injection, SSRF to the cloud metadata endpoint, system-prompt extraction). The offline subset runs in CI on every push and passes 9/9; the live suite runs nightly with an LLM judge and writes `evals/results/report.md` with pass rate by category, p50/p95 latency, time to first token, tokens and cost per task.
+
+**Tests**: 51 backend tests (agent loop, budgets, cancellation, router failover, sandbox limits, SSRF, tenant isolation, SSE resume, hybrid search, MCP server and client, data files in the sandbox, guest and global budgets), run on SQLite and again on Postgres + pgvector + Redis.
+
+**Load** (`loadtest/k6.js`, offline model, 4 API processes, 1 worker): 150/150 concurrent runs completed, ~15 runs/s, p95 9.9s end to end (bounded by worker concurrency). The first attempt failed a third of runs with Postgres `too many clients`; the fix was an explicit per-process connection budget, documented in the config.
 
 ## Engineering highlights
 
 | Concern | What Atlas does |
 |---|---|
-| Long-running work | `POST /v1/runs` returns `202` with a run id at once. Runs execute on arq workers, so a closed tab or an API redeploy does not kill them. |
-| Streaming | Every token and step goes to a Redis Stream. The SSE endpoint replays and then follows it, and honours `Last-Event-ID`, so a dropped connection resumes without losing or duplicating a token. The UI reattaches to an in-flight run after a refresh. |
-| Model reliability | One interface over 100+ providers via LiteLLM: retries with exponential backoff on 429/5xx/timeouts, then ordered fallback to the next provider. Separate planner and main model so planning can run on a cheaper model. |
-| Cost control | Per-call token and USD accounting, per-run cost cap that forces a final answer, daily per-user spend quota, fast path that skips tool schemas. |
-| Code execution | Separate process with CPU, memory, file-size and fd rlimits, wall-clock kill of the whole process group, scrubbed environment. In Docker it runs in its own container on an internal-only network with a read-only root filesystem, dropped capabilities and a pids limit. E2B microVMs are a config switch away. |
-| Prompt injection | All external content is wrapped as untrusted data, delimiter spoofing is neutralised, and heuristics flag override, role-hijack, exfiltration and tool-coercion attempts. Flags are shown in the UI, logged and counted. |
-| SSRF | `fetch_url` resolves every hop (redirects are followed manually) and refuses loopback, private, link-local and cloud-metadata addresses. |
-| RAG | PDF/text extraction, overlapping chunks, embeddings (any provider, or a dependency-free local fallback), HNSW index on pgvector, hybrid re-ranking (0.7 vector + 0.3 lexical) so exact identifiers are not lost. Strictly scoped per user. |
-| Multi-tenancy | JWT auth with bcrypt, every query filtered by owner, brute-force limits on login and signup, sliding-window rate limit shared across replicas through Redis. |
-| Operations | `/healthz`, `/readyz` (DB + Redis), Prometheus `/metrics` (run latency, time to first token, tokens, cost per model, tool success, guard flags), structured JSON logs with request ids, optional Langfuse tracing, stale-run recovery on startup, cooperative cancellation. |
-| Quality gates | 36 backend tests (agent loop, budgets, cancellation, router failover, sandbox limits, SSRF, isolation, SSE resume) run on SQLite and again on Postgres + Redis in CI. A black-box eval suite with deterministic checks and optional LLM-as-judge runs offline on every push and live nightly. |
+| Long-running work | `POST /v1/runs` returns `202` at once; runs execute on arq workers, so a closed tab or an API redeploy does not kill them. |
+| Streaming | Every token and step goes to a Redis Stream. SSE replays then follows it and honours `Last-Event-ID`, so a dropped connection resumes without losing or duplicating a token. |
+| Model reliability | Retries with jittered backoff on 429/5xx/timeouts, then ordered fallback to the next model. Separate, cheaper planner model. |
+| Cost control | Token and USD accounting per call; per-run cap that forces a final answer; daily per-user and per-guest quotas; global daily cap for a public deployment; Fast/Balanced/Deep effort presets. |
+| Code execution | Separate process with CPU, memory, file-size and fd rlimits, process-group kill, scrubbed env. In Docker: its own container, internal-only network, read-only root, dropped capabilities. E2B microVMs are a config switch. |
+| Prompt injection | External content (web, files, remote MCP tools) is wrapped as untrusted data, delimiter spoofing is neutralised, and override, role-hijack, exfiltration and tool-coercion patterns are flagged in the UI. |
+| Output guard | Credentials (API keys, tokens, private keys, JWTs) are masked from final answers. |
+| SSRF | `fetch_url` resolves every redirect hop and refuses private, loopback, link-local and metadata addresses. |
+| Multi-tenancy | JWT auth with bcrypt; every query and every MCP tool call is scoped to the caller; brute-force and sign-up limits; Redis sliding-window rate limit. |
+| Operations | `/healthz`, `/readyz`, Prometheus `/metrics` (run latency, TTFT, tokens, cost by model, tool outcomes, guard flags), JSON logs with request ids, optional Langfuse, stale-run recovery, cooperative cancellation. |
 
 ## Quick start
 
-### Everything in Docker
-
 ```bash
-cp .env.example .env          # add at least one model key, e.g. GEMINI_API_KEY (free tier works)
-docker compose up --build
+cp .env.example .env                 # add GEMINI_API_KEY (free tier works), or set LLM_MODE=fake to run offline
+docker compose up --build            # UI http://localhost:3000, API http://localhost:8000/docs
 ```
 
-Open http://localhost:3000. API docs are at http://localhost:8000/docs.
-
-No key yet? Set `LLM_MODE=fake` in `.env` to run the whole stack on a deterministic offline model.
-
-### Local development
+Local development without Docker (Linux/macOS/WSL, because the sandbox uses POSIX rlimits):
 
 ```bash
-# backend
-cd backend
-pip install -e ".[dev]"
-LLM_MODE=fake uvicorn app.main:app --reload       # SQLite + in-memory bus, no other services needed
-
-# frontend
-cd frontend
-npm install && npm run dev
+cd backend && pip install -e ".[dev]" && LLM_MODE=fake uvicorn app.main:app --reload
+cd frontend && npm install && npm run dev
 ```
+
+## Deploy
+
+```bash
+az login
+OPENROUTER_API_KEY=... ./deploy/azure.sh  # or GEMINI_API_KEY=...; Azure Container Apps + Postgres, ~15 minutes
+```
+
+The script builds both images in Azure Container Registry, creates Postgres with pgvector, and runs the API, an arq worker and Redis as one Container App, plus the web app. Re-running it ships new code. Without a key it deploys the offline demo model; re-run with the key to go live. [docs/DEPLOY.md](docs/DEPLOY.md) also covers Render and Vercel.
+
+## Use Atlas from an MCP client
+
+```json
+{
+  "mcpServers": {
+    "atlas": { "url": "https://atlas-api.graymeadow-875698b7.centralindia.azurecontainerapps.io/mcp", "headers": { "Authorization": "Bearer <token from the UI: Connect via MCP>" } }
+  }
+}
+```
+
+Tools: `run_task(task)`, `search_documents(query, k)`, `list_documents()`. To give Atlas tools from other servers, set `MCP_SERVERS='[{"name":"docs","url":"https://.../mcp","headers":{...}}]'`.
 
 ## Configuration
 
-All settings are environment variables (see [`backend/app/config.py`](backend/app/config.py)). The important ones:
+All settings are environment variables ([`backend/app/config.py`](backend/app/config.py)). The important ones:
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `MODEL_MAIN` | `gemini/gemini-2.5-flash` | Any LiteLLM model string |
-| `MODEL_PLANNER` | same as main | Cheaper model for planning and self-review |
-| `MODEL_FALLBACKS` | `[]` | e.g. `["deepseek/deepseek-chat","openai/gpt-4o-mini"]` |
-| `EMBEDDING_MODEL` | local hashing | e.g. `gemini/text-embedding-004` |
-| `TAVILY_API_KEY` | none | Better search; DuckDuckGo is used without it |
-| `QUEUE_BACKEND` | `inline` | `arq` for durable Redis workers |
-| `SANDBOX_BACKEND` | `local` | `http` (sandbox container) or `e2b` |
-| `MAX_RUN_COST_USD` / `DAILY_USER_COST_USD` | `0.25` / `2.0` | Spend guardrails |
-| `MAX_AGENT_STEPS` / `MAX_TOOL_CALLS_PER_RUN` | `8` / `12` | Loop guardrails |
-| `DB_POOL_SIZE` / `DB_MAX_OVERFLOW` | `5` / `5` | Per-process Postgres connection budget |
-
-## Testing and evals
-
-```bash
-cd backend && pytest -q                                         # unit + API tests
-TEST_DATABASE_URL=postgresql+asyncpg://... TEST_REDIS_URL=redis://... pytest -q   # integration
-
-python evals/run_evals.py --offline --min-pass 1.0              # against a running API, fake model
-python evals/run_evals.py --judge-model gemini/gemini-2.5-flash # live model + LLM judge
-```
-
-The eval suite has 21 tasks across computation, analysis, RAG, research, direct answers and security (file-borne prompt injection, SSRF to the metadata endpoint, system-prompt extraction). It writes `evals/results/report.md` with pass rate by category, p50/p95 latency, time to first token, tokens and cost per task.
-
-## Load testing
-
-`loadtest/k6.js` ramps concurrent users that each start a run and stream it to completion. Measured on a single machine with the offline model, 4 API processes and 1 worker (`max_jobs=20`), 150 simultaneous runs:
-
-| Metric | Result |
-|---|---|
-| Runs completed | 150 / 150 |
-| Throughput | ~15 runs/s |
-| End-to-end p50 / p95 | 6.1s / 9.9s (bounded by worker concurrency; add workers to scale) |
-
-The first load test failed a third of runs with `too many clients` from Postgres: four API processes and a worker each held a 30-connection pool against a 100-connection server. The fix was an explicit connection budget per process (`DB_POOL_SIZE`, `DB_MAX_OVERFLOW`, `pool_timeout`) and a rule in the config docs: processes x (pool + overflow) must stay under `max_connections`, or put PgBouncer in front.
-
-Rerun these numbers against your own deployment and a live model before quoting them.
-
-## Deploying
-
-See [docs/DEPLOY.md](docs/DEPLOY.md) for Render (blueprint included), Azure Container Apps and Vercel.
+| `MODEL_MAIN` / `MODEL_PLANNER` / `MODEL_FALLBACKS` | `gemini/gemini-2.5-flash` / main / `[]` | Any LiteLLM model strings |
+| `EMBEDDING_MODEL` | local hashing | e.g. `gemini/gemini-embedding-001` |
+| `RETRIEVAL_MODE` / `RERANK` | `hybrid` / `none` | `hybrid`, `vector`, `lexical`; `llm` or e.g. `cohere/rerank-v3.5` |
+| `MCP_SERVERS` / `ENABLE_MCP_SERVER` | `[]` / `true` | MCP client servers / expose `/mcp` |
+| `MAX_CONTEXT_CHARS` | `60000` | Context budget before older tool output is compacted |
+| `DAILY_USER_COST_USD` / `GUEST_DAILY_COST_USD` / `GLOBAL_DAILY_COST_USD` | `2` / `0.25` / `25` | Spend guardrails |
+| `QUEUE_BACKEND` / `SANDBOX_BACKEND` | `inline` / `local` | `arq` for durable workers; `http` or `e2b` sandbox |
+| `TAVILY_API_KEY` | none | Better search; DuckDuckGo without it |
 
 ## Project layout
 
 ```
 backend/app/
-  agent/graph.py      LangGraph state machine: plan, act, tools, reflect, budgets, events
-  agent/guard.py      prompt-injection defenses
-  llm.py              LiteLLM router (stream, retry, fallback, cost) + deterministic fake model
-  tools/              web_search, fetch_url (SSRF-safe), python_exec (3 sandbox backends)
-  rag.py              extraction, chunking, embeddings, pgvector + hybrid retrieval
-  runs.py             run lifecycle: quota, dispatch, execution, persistence, recovery
-  infra.py            Redis Streams event bus, rate limiter, cancel flags (+ in-memory twins)
-  api.py, main.py     REST + SSE API, middleware, health, metrics
-  worker.py           arq worker
-sandbox/              isolated code-execution service
-frontend/             Next.js UI (route view, streaming, files, usage)
-evals/                task suite, fixtures, harness
+  agent/graph.py      LangGraph state machine, budgets, context compaction, events
+  agent/guard.py      prompt-injection and output (secret-leak) guards
+  llm.py              LiteLLM router (stream, retry, fallback, cost) + deterministic offline model
+  rag.py              extraction, chunking, embeddings, BM25 + vector + RRF, rerank
+  mcp_server.py       Atlas as an MCP server (/mcp)
+  tools/              web_search, fetch_url (SSRF-safe), python_exec (3 sandbox backends), MCP client
+  runs.py             admission, quotas, effort presets, dispatch, execution, recovery
+  api.py, main.py     REST + SSE API, guest login, samples, middleware, health, metrics
+  samples/            Northwind knowledge base + sales and support-ticket datasets
+frontend/             Next.js UI built with React Bits components (PromptBar, ThoughtLine, ShinyText, BlurText, SpotlightCard, Threads)
+evals/                agent task suite, retrieval eval + labelled queries, harness
+deploy/azure.sh       one-command Azure deployment
 loadtest/             k6 script
 ```
 
 ## Roadmap
 
-- MCP client so users can connect their own tools (GitHub, Notion, Gmail)
-- OpenTelemetry traces across API, worker and tools
-- Alembic migrations (schema is created on startup today)
 - Human approval step for side-effecting tools
+- OpenTelemetry traces across API, worker and tools
+- Alembic migrations (additive columns are applied on startup today)
 
 ## License
 

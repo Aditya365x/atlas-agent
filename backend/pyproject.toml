@@ -1,6 +1,6 @@
 [project]
 name = "atlas-agent"
-version = "1.0.0"
+version = "1.1.0"
 description = "Production-grade autonomous AI agent: planning, tool use, sandboxed code execution, RAG and streaming."
 requires-python = ">=3.11"
 dependencies = [
@@ -27,6 +27,8 @@ dependencies = [
   "numpy>=1.26",
   "pandas>=2.2",
   "matplotlib>=3.8",
+  "openpyxl>=3.1",
+  "mcp>=2.3,<3",
 ]
 
 [project.optional-dependencies]

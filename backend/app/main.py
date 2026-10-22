@@ -2,7 +2,7 @@
 
 import time
 import uuid
-from contextlib import asynccontextmanager
+from contextlib import AsyncExitStack, asynccontextmanager
 
 import structlog
 from fastapi import FastAPI, Request
@@ -28,6 +28,9 @@ async def lifespan(app: FastAPI):
         raise RuntimeError("JWT_SECRET must be set in production")
     await db.init_db()
     recovered = await recover_stale_runs()
+    stack = AsyncExitStack()
+    if getattr(app.state, "mcp", None) is not None:
+        await stack.enter_async_context(app.state.mcp.session_manager.run())
     log.info(
         "startup",
         env=s.environment,
@@ -37,8 +40,11 @@ async def lifespan(app: FastAPI):
         sandbox=s.sandbox_backend,
         redis=bool(s.redis_url),
         recovered_runs=recovered,
+        mcp_server=getattr(app.state, "mcp", None) is not None,
+        mcp_clients=[m.get("name") for m in s.mcp_servers],
     )
     yield
+    await stack.aclose()
     await get_infra().close()
     await db.dispose_db()
 
@@ -47,7 +53,7 @@ def create_app() -> FastAPI:
     s = get_settings()
     app = FastAPI(
         title="Atlas Agent API",
-        version="1.0.0",
+        version="1.1.0",
         description="Production-grade autonomous agent: planning, tool use, sandboxed code, RAG, streaming.",
         lifespan=lifespan,
     )
@@ -86,6 +92,14 @@ def create_app() -> FastAPI:
         return response
 
     app.include_router(router)
+
+    if s.enable_mcp_server:
+        from starlette.routing import Route
+
+        from app.mcp_server import MCPAuthApp, build_mcp
+
+        app.state.mcp = build_mcp()
+        app.router.routes.append(Route("/mcp", MCPAuthApp(app.state.mcp), methods=["GET", "POST", "DELETE"]))
 
     @app.get("/healthz", tags=["ops"])
     async def healthz():

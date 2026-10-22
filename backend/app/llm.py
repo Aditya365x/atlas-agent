@@ -68,6 +68,44 @@ class LLMUnavailable(RuntimeError):
     pass
 
 
+def register_openrouter_prices(models: list[str], fetch: Callable[[], list[dict]] | None = None) -> list[str]:
+    """New OpenRouter models are often missing from LiteLLM's price map, which would make every call cost $0
+    and silently disable the spend caps. Pull their prices from OpenRouter's public model list instead.
+    Returns the models that were registered; never raises."""
+    import litellm
+
+    wanted = {m for m in models if m and m.startswith("openrouter/") and m not in litellm.model_cost}
+    if not wanted:
+        return []
+    try:
+        if fetch is None:
+            import httpx
+
+            fetch = lambda: httpx.get("https://openrouter.ai/api/v1/models", timeout=10).json()["data"]  # noqa: E731
+        catalog = {f"openrouter/{m['id']}": m for m in fetch()}
+        entries = {}
+        for name in wanted:
+            m = catalog.get(name)
+            if not m:
+                log.warning("llm.price_unknown", model=name)
+                continue
+            entries[name] = {
+                "input_cost_per_token": float(m["pricing"]["prompt"]),
+                "output_cost_per_token": float(m["pricing"]["completion"]),
+                "max_input_tokens": m.get("context_length"),
+                "litellm_provider": "openrouter",
+                "mode": "chat",
+                "supports_function_calling": "tools" in (m.get("supported_parameters") or []),
+            }
+        if entries:
+            litellm.register_model(entries)
+            log.info("llm.prices_registered", models=sorted(entries))
+        return sorted(entries)
+    except Exception as e:  # noqa: BLE001 - pricing lookup must never stop the service starting
+        log.warning("llm.price_lookup_failed", error=str(e)[:200])
+        return []
+
+
 class LiteLLMRouter(LLM):
     def __init__(self, settings: Settings | None = None) -> None:
         import litellm
@@ -79,6 +117,7 @@ class LiteLLMRouter(LLM):
         if self.s.langfuse_public_key and self.s.langfuse_secret_key:
             litellm.success_callback = ["langfuse"]
             litellm.failure_callback = ["langfuse"]
+        register_openrouter_prices([self.s.model_main, self.s.planner_model, *self.s.model_fallbacks])
 
     def _models_for(self, role: Role) -> list[str]:
         primary = self.s.planner_model if role in ("planner", "critic") else self.s.model_main
@@ -188,7 +227,9 @@ class FakeLLM(LLM):
         q = self._user_query(messages)
         ql = q.lower()
         if role == "planner":
-            needs = bool(re.search(r"search|latest|news|today|plot|chart|calculat|compute|file|document|http", ql)) or bool(_MATH.search(q))
+            needs = bool(
+                re.search(r"search|latest|news|today|plot|chart|calculat|compute|file|document|uploaded|\.csv|\.xlsx|http", ql)
+            ) or bool(_MATH.search(q))
             steps = ["Understand the request", "Gather facts with tools", "Write the answer"] if needs else ["Answer"]
             return LLMResult(json.dumps({"needs_tools": needs, "steps": steps}))
         if role == "critic":
@@ -209,6 +250,18 @@ class FakeLLM(LLM):
                 "import matplotlib\nmatplotlib.use('Agg')\nimport matplotlib.pyplot as plt\n"
                 "xs=list(range(1,11)); ys=[x*x for x in xs]\nplt.plot(xs, ys, marker='o'); plt.title('y = x^2')\n"
                 "plt.savefig('chart.png', dpi=110)\nprint('saved chart.png; max y =', max(ys))"
+            )
+            return call("python_exec", {"code": code})
+        data_file = re.search(r"[\w\-]+\.(?:csv|xlsx)", q)
+        if "python_exec" in names and data_file:
+            name = data_file.group(0)
+            reader = "read_excel" if name.endswith(".xlsx") else "read_csv"
+            code = (
+                f"import pandas as pd\ndf = pd.{reader}('{name}')\n"
+                "cat = next(c for c in df.columns if not pd.api.types.is_numeric_dtype(df[c]) and not any(k in c.lower() for k in ('id', 'date', 'month', 'created')))\n"
+                "num = [c for c in df.columns if pd.api.types.is_numeric_dtype(df[c])][-1]\n"
+                "totals = df.groupby(cat)[num].sum().sort_values(ascending=False)\n"
+                "print(totals.to_string()); print('top:', totals.index[0])"
             )
             return call("python_exec", {"code": code})
         m = _MATH.search(q)

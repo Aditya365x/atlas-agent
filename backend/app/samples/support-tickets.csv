@@ -1,0 +1,241 @@
+ticket_id,created,region,category,priority,resolution_hours,csat
+T-10001,2026-09-04,East,Damaged parcel,P2,15.1,2
+T-10002,2026-07-03,South,Billing,P3,26.4,4
+T-10003,2026-04-21,North,Late delivery,P3,27.0,2
+T-10004,2026-03-10,West,Billing,P2,11.2,4
+T-10005,2026-03-04,South,Late delivery,P2,7.4,4
+T-10006,2026-04-16,West,Damaged parcel,P3,42.9,2
+T-10007,2026-04-26,South,API / integration,P3,29.4,3
+T-10008,2026-06-24,West,API / integration,P2,5.6,3
+T-10009,2026-06-05,West,Late delivery,P3,29.1,3
+T-10010,2026-06-11,East,Damaged parcel,P3,46.1,3
+T-10011,2026-05-16,North,Billing,P3,18.6,4
+T-10012,2026-08-10,West,Late delivery,P3,18.4,1
+T-10013,2026-02-16,North,Address change,P2,13.5,4
+T-10014,2026-08-03,South,Late delivery,P2,9.7,2
+T-10015,2026-09-09,West,Billing,P3,31.5,3
+T-10016,2026-02-06,South,Refund request,P3,23.9,4
+T-10017,2026-05-10,North,Late delivery,P2,4.7,3
+T-10018,2026-03-23,North,Late delivery,P3,23.3,3
+T-10019,2026-09-13,West,Billing,P3,31.8,3
+T-10020,2026-02-07,West,Damaged parcel,P2,15.0,2
+T-10021,2026-03-18,North,Late delivery,P2,10.1,3
+T-10022,2026-07-05,East,Refund request,P3,28.5,3
+T-10023,2026-08-15,West,Refund request,P3,24.0,3
+T-10024,2026-05-16,South,Billing,P1,5.9,4
+T-10025,2026-09-01,East,Billing,P2,13.6,4
+T-10026,2026-06-06,East,Refund request,P3,25.0,2
+T-10027,2026-04-20,South,API / integration,P3,26.6,3
+T-10028,2026-09-16,East,Address change,P3,25.8,3
+T-10029,2026-04-23,East,API / integration,P3,27.1,2
+T-10030,2026-06-03,South,Billing,P3,35.9,3
+T-10031,2026-01-16,East,Late delivery,P3,23.6,4
+T-10032,2026-04-16,South,Address change,P1,0.3,3
+T-10033,2026-07-15,West,Damaged parcel,P3,49.9,3
+T-10034,2026-01-05,West,API / integration,P1,9.8,5
+T-10035,2026-06-05,South,Address change,P2,15.2,2
+T-10036,2026-03-14,South,Late delivery,P3,25.7,2
+T-10037,2026-04-25,East,Address change,P2,10.0,5
+T-10038,2026-06-15,West,Late delivery,P3,32.0,4
+T-10039,2026-09-01,West,Address change,P3,27.6,4
+T-10040,2026-03-16,North,API / integration,P3,26.4,3
+T-10041,2026-02-18,North,Billing,P2,4.9,4
+T-10042,2026-09-01,North,Late delivery,P2,10.7,2
+T-10043,2026-05-15,West,Billing,P3,21.2,4
+T-10044,2026-05-18,South,Billing,P2,1.9,4
+T-10045,2026-02-22,South,Address change,P2,13.1,5
+T-10046,2026-03-23,East,Damaged parcel,P2,15.3,3
+T-10047,2026-02-13,West,Late delivery,P3,28.8,3
+T-10048,2026-09-13,East,Late delivery,P3,27.0,4
+T-10049,2026-06-18,West,Damaged parcel,P2,19.2,3
+T-10050,2026-09-03,North,Billing,P1,0.3,5
+T-10051,2026-05-09,North,Refund request,P3,27.9,3
+T-10052,2026-05-13,South,Refund request,P2,10.3,2
+T-10053,2026-05-02,South,Billing,P3,22.4,4
+T-10054,2026-05-03,South,Damaged parcel,P1,10.1,2
+T-10055,2026-09-14,East,Late delivery,P3,22.5,3
+T-10056,2026-03-09,North,API / integration,P1,0.6,2
+T-10057,2026-04-10,West,Late delivery,P3,22.6,2
+T-10058,2026-05-02,North,Billing,P2,9.6,4
+T-10059,2026-04-15,North,Late delivery,P3,30.8,3
+T-10060,2026-07-17,East,API / integration,P3,23.2,3
+T-10061,2026-03-13,East,API / integration,P3,21.8,5
+T-10062,2026-05-14,South,Refund request,P3,31.6,3
+T-10063,2026-05-20,South,Late delivery,P3,22.5,4
+T-10064,2026-01-09,East,API / integration,P1,4.3,4
+T-10065,2026-05-07,East,Refund request,P3,23.1,3
+T-10066,2026-04-08,North,Late delivery,P2,12.8,3
+T-10067,2026-07-01,East,Late delivery,P3,29.3,4
+T-10068,2026-03-22,West,Damaged parcel,P2,11.8,2
+T-10069,2026-03-02,West,API / integration,P3,22.7,4
+T-10070,2026-09-19,North,API / integration,P3,29.1,4
+T-10071,2026-04-03,North,Address change,P3,30.7,3
+T-10072,2026-08-18,North,Late delivery,P3,29.8,3
+T-10073,2026-01-15,North,API / integration,P3,24.0,3
+T-10074,2026-02-24,West,API / integration,P3,20.3,3
+T-10075,2026-04-08,West,Late delivery,P1,2.4,4
+T-10076,2026-01-20,South,Billing,P2,4.0,4
+T-10077,2026-05-20,South,Late delivery,P2,9.8,4
+T-10078,2026-04-22,West,Late delivery,P1,2.3,4
+T-10079,2026-02-18,South,Late delivery,P3,21.6,3
+T-10080,2026-02-27,West,Damaged parcel,P1,1.5,3
+T-10081,2026-02-19,North,Refund request,P2,18.0,2
+T-10082,2026-09-09,North,Late delivery,P3,28.0,3
+T-10083,2026-01-06,North,API / integration,P2,13.7,3
+T-10084,2026-07-12,West,Refund request,P3,20.7,4
+T-10085,2026-07-04,South,Damaged parcel,P3,48.3,2
+T-10086,2026-07-13,North,API / integration,P3,25.0,4
+T-10087,2026-02-02,East,Damaged parcel,P3,41.4,2
+T-10088,2026-06-07,East,API / integration,P2,14.2,4
+T-10089,2026-07-18,South,Address change,P3,32.7,4
+T-10090,2026-03-21,East,API / integration,P1,2.5,3
+T-10091,2026-07-11,East,Billing,P3,23.7,4
+T-10092,2026-04-10,West,Late delivery,P3,29.1,3
+T-10093,2026-04-17,West,Billing,P2,11.2,4
+T-10094,2026-07-05,South,Billing,P3,22.6,5
+T-10095,2026-06-09,South,Late delivery,P2,6.7,3
+T-10096,2026-09-07,West,Address change,P3,22.5,5
+T-10097,2026-06-05,South,Late delivery,P3,20.8,3
+T-10098,2026-07-10,North,Late delivery,P3,21.7,4
+T-10099,2026-08-01,North,Late delivery,P3,26.6,1
+T-10100,2026-08-08,North,Damaged parcel,P3,45.2,1
+T-10101,2026-08-03,North,Late delivery,P2,11.9,3
+T-10102,2026-05-05,East,Late delivery,P2,9.0,3
+T-10103,2026-05-17,South,Billing,P3,26.2,3
+T-10104,2026-05-15,East,Damaged parcel,P2,15.5,3
+T-10105,2026-04-18,South,Refund request,P3,29.4,2
+T-10106,2026-04-16,West,Late delivery,P3,25.2,2
+T-10107,2026-08-02,East,Late delivery,P2,6.6,3
+T-10108,2026-05-24,North,API / integration,P2,9.6,4
+T-10109,2026-04-15,South,Late delivery,P3,23.2,4
+T-10110,2026-03-08,West,Late delivery,P3,30.3,3
+T-10111,2026-07-02,South,Damaged parcel,P3,43.7,2
+T-10112,2026-03-13,West,Late delivery,P3,20.6,4
+T-10113,2026-03-11,South,Address change,P3,24.5,1
+T-10114,2026-07-27,East,Late delivery,P3,26.0,2
+T-10115,2026-02-12,West,Refund request,P3,27.3,3
+T-10116,2026-06-25,East,Refund request,P2,12.7,3
+T-10117,2026-06-18,West,Address change,P3,30.3,4
+T-10118,2026-07-08,West,Late delivery,P2,10.8,3
+T-10119,2026-05-07,North,Late delivery,P1,11.3,4
+T-10120,2026-01-09,East,Address change,P2,8.6,5
+T-10121,2026-02-01,South,Refund request,P2,9.0,2
+T-10122,2026-05-14,West,Late delivery,P3,19.2,3
+T-10123,2026-05-27,South,Late delivery,P3,35.2,3
+T-10124,2026-02-17,South,Billing,P2,8.4,5
+T-10125,2026-08-18,East,Damaged parcel,P2,11.2,3
+T-10126,2026-02-07,North,Late delivery,P3,27.2,3
+T-10127,2026-03-14,West,Damaged parcel,P3,44.0,2
+T-10128,2026-02-25,East,API / integration,P3,25.9,2
+T-10129,2026-04-15,South,Late delivery,P3,21.4,4
+T-10130,2026-04-11,North,Late delivery,P2,8.3,5
+T-10131,2026-02-21,West,Damaged parcel,P3,38.7,2
+T-10132,2026-08-12,North,Refund request,P2,2.7,4
+T-10133,2026-04-03,East,Address change,P2,15.1,5
+T-10134,2026-01-04,East,Billing,P2,4.5,3
+T-10135,2026-05-02,South,Late delivery,P2,11.7,4
+T-10136,2026-05-03,South,Address change,P3,22.8,5
+T-10137,2026-07-22,South,Late delivery,P3,21.9,3
+T-10138,2026-07-10,East,API / integration,P1,6.2,5
+T-10139,2026-07-14,North,Damaged parcel,P1,4.6,1
+T-10140,2026-07-07,North,Address change,P3,24.3,4
+T-10141,2026-06-15,South,Damaged parcel,P2,17.3,3
+T-10142,2026-07-03,East,Late delivery,P1,7.5,4
+T-10143,2026-03-03,North,API / integration,P2,8.6,4
+T-10144,2026-05-05,North,Damaged parcel,P3,43.5,1
+T-10145,2026-07-03,South,Refund request,P3,34.6,4
+T-10146,2026-04-27,West,API / integration,P3,22.0,3
+T-10147,2026-07-12,North,Late delivery,P2,6.1,4
+T-10148,2026-09-27,North,Late delivery,P3,27.0,2
+T-10149,2026-05-21,West,API / integration,P2,6.6,4
+T-10150,2026-09-15,South,Damaged parcel,P2,13.1,3
+T-10151,2026-08-27,South,Late delivery,P3,23.1,3
+T-10152,2026-06-03,West,Address change,P3,29.4,4
+T-10153,2026-06-25,North,Billing,P3,28.0,4
+T-10154,2026-03-01,North,Late delivery,P3,18.9,4
+T-10155,2026-08-10,South,Refund request,P3,27.0,3
+T-10156,2026-05-06,East,API / integration,P3,27.4,5
+T-10157,2026-09-16,South,Address change,P2,10.9,4
+T-10158,2026-04-06,West,Billing,P3,26.3,4
+T-10159,2026-03-26,East,Late delivery,P3,22.4,2
+T-10160,2026-08-18,North,Late delivery,P3,23.5,3
+T-10161,2026-06-09,West,Late delivery,P3,30.1,2
+T-10162,2026-08-08,South,Refund request,P3,21.7,4
+T-10163,2026-05-21,East,Billing,P3,24.6,4
+T-10164,2026-07-14,East,API / integration,P3,26.6,4
+T-10165,2026-01-02,North,Address change,P2,10.8,5
+T-10166,2026-07-19,East,Billing,P2,5.1,4
+T-10167,2026-03-01,South,Billing,P2,6.8,3
+T-10168,2026-05-13,East,API / integration,P3,28.1,3
+T-10169,2026-08-20,West,Refund request,P1,6.6,2
+T-10170,2026-07-06,South,Late delivery,P3,30.7,3
+T-10171,2026-04-05,West,Late delivery,P3,30.4,3
+T-10172,2026-03-17,East,Late delivery,P3,20.3,3
+T-10173,2026-08-23,North,Late delivery,P3,32.4,3
+T-10174,2026-08-06,South,Damaged parcel,P3,43.0,2
+T-10175,2026-05-23,North,Refund request,P2,8.7,3
+T-10176,2026-09-09,East,Late delivery,P3,19.5,4
+T-10177,2026-01-06,East,API / integration,P3,27.7,5
+T-10178,2026-06-07,West,Refund request,P3,26.7,3
+T-10179,2026-09-16,West,Damaged parcel,P2,20.7,2
+T-10180,2026-04-19,East,Address change,P3,28.7,3
+T-10181,2026-03-05,North,Address change,P2,5.6,4
+T-10182,2026-03-23,North,Late delivery,P2,13.3,3
+T-10183,2026-02-24,North,Late delivery,P2,9.3,3
+T-10184,2026-09-22,North,Late delivery,P3,21.2,4
+T-10185,2026-04-07,South,Address change,P3,25.1,3
+T-10186,2026-02-27,East,Late delivery,P1,7.2,2
+T-10187,2026-05-11,East,Billing,P2,11.5,3
+T-10188,2026-06-11,West,Damaged parcel,P1,4.7,3
+T-10189,2026-07-17,North,Address change,P3,30.1,4
+T-10190,2026-02-19,East,Damaged parcel,P3,38.9,2
+T-10191,2026-01-01,East,Late delivery,P1,5.0,4
+T-10192,2026-08-19,East,Billing,P3,26.7,3
+T-10193,2026-04-23,South,Refund request,P3,23.9,3
+T-10194,2026-09-26,North,Billing,P2,8.9,4
+T-10195,2026-02-14,North,API / integration,P2,6.7,4
+T-10196,2026-03-13,South,Damaged parcel,P2,11.5,3
+T-10197,2026-01-12,East,Refund request,P2,4.9,3
+T-10198,2026-06-06,West,Billing,P3,21.2,4
+T-10199,2026-08-21,South,Damaged parcel,P3,39.8,2
+T-10200,2026-03-24,South,Billing,P2,10.2,2
+T-10201,2026-04-11,South,Refund request,P3,23.0,3
+T-10202,2026-02-07,West,Late delivery,P3,28.4,3
+T-10203,2026-05-07,North,Late delivery,P2,8.9,4
+T-10204,2026-01-01,West,API / integration,P2,11.1,4
+T-10205,2026-05-15,North,Address change,P3,27.9,5
+T-10206,2026-07-23,West,Late delivery,P3,20.6,4
+T-10207,2026-04-22,South,Address change,P3,21.3,3
+T-10208,2026-02-14,South,API / integration,P3,23.8,5
+T-10209,2026-07-16,West,Address change,P3,23.9,4
+T-10210,2026-03-21,East,Late delivery,P3,20.2,3
+T-10211,2026-01-09,South,API / integration,P2,0.3,4
+T-10212,2026-02-28,West,Late delivery,P3,30.5,2
+T-10213,2026-06-17,East,Billing,P3,20.3,4
+T-10214,2026-07-17,North,Damaged parcel,P3,43.1,3
+T-10215,2026-07-13,North,API / integration,P3,24.0,3
+T-10216,2026-06-19,East,Late delivery,P3,20.6,4
+T-10217,2026-04-26,West,Late delivery,P2,2.0,4
+T-10218,2026-04-16,South,Billing,P2,11.4,4
+T-10219,2026-07-15,East,Address change,P2,6.2,3
+T-10220,2026-04-09,West,API / integration,P3,26.8,2
+T-10221,2026-05-12,South,API / integration,P3,24.0,3
+T-10222,2026-02-22,East,API / integration,P2,4.4,4
+T-10223,2026-06-26,South,Late delivery,P2,8.7,3
+T-10224,2026-04-03,East,Billing,P2,4.9,3
+T-10225,2026-08-12,South,Late delivery,P2,11.8,4
+T-10226,2026-02-22,East,Late delivery,P3,20.6,3
+T-10227,2026-08-22,North,Late delivery,P3,19.5,3
+T-10228,2026-08-18,North,Billing,P2,10.2,4
+T-10229,2026-03-18,North,Billing,P3,25.1,3
+T-10230,2026-05-27,West,Late delivery,P2,8.4,2
+T-10231,2026-06-21,North,Damaged parcel,P3,43.1,2
+T-10232,2026-02-17,West,Late delivery,P1,1.7,1
+T-10233,2026-03-11,North,Billing,P3,32.2,4
+T-10234,2026-04-10,West,Address change,P2,5.2,5
+T-10235,2026-06-27,West,Damaged parcel,P2,19.1,3
+T-10236,2026-04-21,West,Damaged parcel,P3,41.0,3
+T-10237,2026-02-26,North,Address change,P2,8.6,5
+T-10238,2026-07-10,North,Damaged parcel,P3,37.3,3
+T-10239,2026-01-26,West,Late delivery,P2,14.8,3
+T-10240,2026-02-07,North,Billing,P3,24.2,2

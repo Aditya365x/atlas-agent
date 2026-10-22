@@ -56,3 +56,17 @@ async def test_all_models_down(monkeypatch):
 
 async def _no_sleep(*_):
     return None
+
+
+def test_openrouter_prices_are_registered_so_budgets_work():
+    import litellm
+
+    from app.llm import register_openrouter_prices
+
+    catalog = [
+        {"id": "acme/new-model-x", "pricing": {"prompt": "0.0000001", "completion": "0.00000035"}, "context_length": 1000, "supported_parameters": ["tools"]}
+    ]
+    done = register_openrouter_prices(["openrouter/acme/new-model-x", "openrouter/acme/missing", "gemini/x"], fetch=lambda: catalog)
+    assert done == ["openrouter/acme/new-model-x"]
+    assert litellm.model_cost["openrouter/acme/new-model-x"]["output_cost_per_token"] == pytest.approx(3.5e-7)
+    assert register_openrouter_prices(["openrouter/acme/other"], fetch=lambda: 1 / 0) == []  # lookup failures never raise

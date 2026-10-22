@@ -1,0 +1,44 @@
+{"q": "How many days of paid annual leave do I get?", "answer": "24 days of paid annual leave", "type": "keyword"}
+{"q": "Can I carry unused vacation into next year?", "answer": "Up to 8 unused days carry over", "type": "paraphrase"}
+{"q": "How long is maternity or paternity leave?", "answer": "Parental leave is 26 weeks", "type": "paraphrase"}
+{"q": "Do I need a medical certificate if I'm ill for a day?", "answer": "no doctor's note needed", "type": "paraphrase"}
+{"q": "What is the deadline for submitting expense claims?", "answer": "within 30 days of the purchase", "type": "keyword"}
+{"q": "Will the company pay for wine at a work dinner?", "answer": "Alcohol is never reimbursed", "type": "paraphrase"}
+{"q": "daily meal allowance metro cities", "answer": "1,500 INR per day in metro cities", "type": "keyword"}
+{"q": "When am I allowed to fly business class?", "answer": "Business class is allowed only for flights longer than 6 hours", "type": "keyword"}
+{"q": "What's the maximum hotel rate in Bengaluru?", "answer": "7,000 INR per night", "type": "keyword"}
+{"q": "How much do I get paid per km for driving my own car?", "answer": "12 INR per kilometre", "type": "paraphrase"}
+{"q": "Who has to approve a refund of 20000 rupees?", "answer": "Refunds above 5,000 INR need approval from a support manager", "type": "paraphrase"}
+{"q": "compensation when a same-day parcel is delivered late", "answer": "10 percent of the shipment fee", "type": "paraphrase"}
+{"q": "When does the on-call rotation change?", "answer": "changes every Tuesday at 10:00 IST", "type": "keyword"}
+{"q": "How quickly must I respond when I get paged?", "answer": "Acknowledge a page within 5 minutes", "type": "paraphrase"}
+{"q": "What counts as a SEV1 incident?", "answer": "SEV1: the booking platform or driver app is down", "type": "keyword"}
+{"q": "How soon after a major outage is the postmortem due?", "answer": "blameless postmortem within 5 working days", "type": "paraphrase"}
+{"q": "Can we ship code on a Friday?", "answer": "Friday deploys require a written rollback plan", "type": "paraphrase"}
+{"q": "When is the holiday code freeze?", "answer": "code freeze from 20 December to 2 January", "type": "keyword"}
+{"q": "My laptop was stolen, what do I do?", "answer": "Report a lost or stolen device", "type": "paraphrase"}
+{"q": "How long do we keep driver location history?", "answer": "Driver GPS traces are kept for 90 days", "type": "paraphrase"}
+{"q": "retention period for support call recordings", "answer": "deleted after 180 days", "type": "keyword"}
+{"q": "How long is probation for new hires?", "answer": "The probation period is 3 months", "type": "keyword"}
+{"q": "When are salary increases applied?", "answer": "Salary revisions take effect from 1 April", "type": "paraphrase"}
+{"q": "How much money can I spend on courses and conferences?", "answer": "learning budget of 40,000 INR per year", "type": "paraphrase"}
+{"q": "What does error E-4031 mean?", "answer": "E-4031: the shipment cannot be modified", "type": "identifier"}
+{"q": "E-2003", "answer": "E-2003: parcel exceeds limits", "type": "identifier"}
+{"q": "I'm getting E-1002 from the API", "answer": "E-1002: the API key is valid but has been revoked", "type": "identifier"}
+{"q": "Why does the API say my address could not be located?", "answer": "E-2001: address could not be geocoded", "type": "paraphrase"}
+{"q": "How many requests per minute can I make to the quotes endpoint?", "answer": "stricter limit of 120 requests per minute", "type": "keyword"}
+{"q": "How do I avoid creating duplicate shipments when retrying?", "answer": "Idempotency-Key", "type": "paraphrase"}
+{"q": "What prefix do live API keys have?", "answer": "live keys start with `nw_live_`", "type": "keyword"}
+{"q": "How do I verify that a webhook really came from Northwind?", "answer": "signed with HMAC-SHA256", "type": "paraphrase"}
+{"q": "How is volumetric weight calculated?", "answer": "length x width x height / 5000", "type": "keyword"}
+{"q": "What does it cost to cancel after a driver is assigned?", "answer": "cancellation fee is 30 percent", "type": "paraphrase"}
+{"q": "What's the heaviest parcel I can send?", "answer": "maximum weight is 50 kg per parcel", "type": "paraphrase"}
+{"q": "How can I test an unserviceable route in the sandbox?", "answer": "PIN code 999999", "type": "keyword"}
+{"q": "How much does the Growth plan cost?", "answer": "Growth costs 4,999 INR per month", "type": "keyword"}
+{"q": "Which cities have same-day delivery?", "answer": "Same-day delivery is available in Mumbai, Delhi NCR, Bengaluru", "type": "keyword"}
+{"q": "Can I send lithium batteries?", "answer": "lithium batteries shipped on their own", "type": "keyword"}
+{"q": "How do I keep vaccines cold during delivery?", "answer": "Cold Chain add-on", "type": "paraphrase"}
+{"q": "What is the default insurance coverage on a parcel?", "answer": "covered up to 5,000 INR at no cost", "type": "paraphrase"}
+{"q": "When is COD money paid out to me?", "answer": "twice a week, on Tuesdays and Fridays", "type": "paraphrase"}
+{"q": "Is my data kept in India?", "answer": "stored in data centres in Mumbai and Hyderabad", "type": "paraphrase"}
+{"q": "Do you have a Shopify plugin?", "answer": "plug-ins for Shopify, WooCommerce and Magento", "type": "keyword"}

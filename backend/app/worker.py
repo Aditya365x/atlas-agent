@@ -35,3 +35,4 @@ class WorkerSettings:
     max_jobs = 20
     job_timeout = 600
     max_tries = 1  # agent runs have side effects (tool calls); never auto-replay
+    health_check_interval = 30  # `arq --check app.worker.WorkerSettings` is the container health probe

@@ -66,6 +66,7 @@ services:
   worker:
     build: ./backend
     command: ["arq", "app.worker.WorkerSettings"]
+    healthcheck: { test: ["CMD", "arq", "--check", "app.worker.WorkerSettings"], interval: 30s, start_period: 40s }
     environment: *backend-env
     depends_on:
       postgres: { condition: service_healthy }

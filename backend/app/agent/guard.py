@@ -39,3 +39,30 @@ def wrap_untrusted(source: str, text: str) -> tuple[str, list[str]]:
         else ""
     )
     return f'<untrusted_content source="{source}">\n{text}\n</untrusted_content>{warning}', flags
+
+
+# ---------------------------------- output guard -------------------------------------
+# Last line of defense on what leaves the system: if a credential ended up in the context (pasted by a
+# user, scraped from a page, printed by code) it is masked in the final answer.
+_SECRETS = {
+    "openai_key": r"\bsk-(?:proj-)?[A-Za-z0-9_\-]{20,}",
+    "anthropic_key": r"\bsk-ant-[A-Za-z0-9_\-]{20,}",
+    "google_key": r"\bAIza[0-9A-Za-z_\-]{35}\b",
+    "github_token": r"\bgh[pousr]_[A-Za-z0-9]{36,}\b",
+    "aws_access_key": r"\b(?:AKIA|ASIA)[0-9A-Z]{16}\b",
+    "slack_token": r"\bxox[abprs]-[A-Za-z0-9-]{10,}",
+    "private_key": r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----[\s\S]*?-----END (?:RSA |EC |OPENSSH )?PRIVATE KEY-----",
+    "jwt": r"\beyJ[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{10,}\.[A-Za-z0-9_\-]{10,}",
+}
+_SECRET_RX = {k: re.compile(v) for k, v in _SECRETS.items()}
+
+
+def redact_secrets(text: str) -> tuple[str, list[str]]:
+    found = []
+    for name, rx in _SECRET_RX.items():
+        text, n = rx.subn(f"[redacted {name}]", text)
+        if n:
+            found.append(name)
+    if found:
+        GUARD_FLAGS.labels("output").inc(len(found))
+    return text, found

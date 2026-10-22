@@ -17,6 +17,7 @@ export type AgentEvent =
   | { type: "tool.result"; id: string; tool: string; ok: boolean; ms: number; preview: string; images?: Image[]; sources?: Source[] }
   | { type: "reflection"; score: number; feedback: string; revise: boolean }
   | { type: "guard.flag"; tool: string; flags: string[] }
+  | { type: "context.compacted"; chars_saved: number }
   | { type: "run.completed"; message_id: string; answer: string; usage: Usage; latency_ms: number; steps: number; tool_calls: number }
   | { type: "run.failed"; error: string }
   | { type: "run.cancelled" };
@@ -30,7 +31,18 @@ export type Message = {
   meta: { trace?: AgentEvent[]; images?: Image[]; sources?: Source[]; usage?: Usage; latency_ms?: number; stop_reason?: string };
 };
 export type Conversation = { id: string; title: string; updated_at: string };
-export type Doc = { id: string; filename: string; num_chunks: number; created_at: string };
+export type Doc = { id: string; filename: string; num_chunks: number; created_at: string; size_bytes?: number };
+export type Effort = "fast" | "balanced" | "deep";
+export type Info = {
+  version: string;
+  model: string;
+  fallbacks: string[];
+  retrieval: { mode: string; rerank: string; embeddings: string };
+  mcp_server: string | null;
+  mcp_clients: string[];
+  sandbox: string;
+};
+export type Sample = { name: string; size_bytes: number };
 export type Me = { id: string; email: string; spend_24h_usd: number; daily_limit_usd: number };
 export type Stats = { runs: number; completed: number; failed: number; avg_latency_ms: number | null; p95_latency_ms: number | null; total_cost_usd: number; total_tokens: number; tool_calls: number };
 

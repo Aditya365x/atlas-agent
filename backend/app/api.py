@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import secrets
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -16,8 +17,8 @@ from app import rag
 from app.config import get_settings
 from app.db import get_session
 from app.infra import TERMINAL_EVENTS, get_infra
-from app.models import Conversation, Document, Message, Run, User
-from app.runs import check_daily_quota, dispatch
+from app.models import Conversation, Document, Run, User
+from app.runs import GUEST_DOMAIN, daily_limit, start_run
 from app.schemas import (
     ConversationDetail,
     ConversationOut,
@@ -43,6 +44,22 @@ async def rate_limited(request: Request, user: User = Depends(current_user)) -> 
     return user
 
 
+@router.get("/info", tags=["ops"])
+async def info():
+    """Public capabilities of this deployment (the UI shows the model and the MCP endpoint)."""
+    s = get_settings()
+    return {
+        "version": "1.1.0",
+        "model": "offline demo model" if s.llm_mode == "fake" else s.model_main,
+        "fallbacks": s.model_fallbacks,
+        "retrieval": {"mode": s.retrieval_mode, "rerank": s.rerank, "embeddings": s.embedding_model or "local hashing"},
+        "mcp_server": "/mcp" if s.enable_mcp_server else None,
+        "mcp_clients": [m.get("name") for m in s.mcp_servers],
+        "sandbox": s.sandbox_backend,
+        "efforts": ["fast", "balanced", "deep"],
+    }
+
+
 # ----------------------------------- auth --------------------------------------------
 
 
@@ -56,6 +73,19 @@ async def register(body: Credentials, request: Request, session: AsyncSession = 
     if await session.scalar(select(User.id).where(User.email == email)):
         raise HTTPException(409, "Email already registered")
     user = User(email=email, password_hash=hash_password(body.password))
+    session.add(user)
+    await session.commit()
+    return TokenOut(access_token=create_token(user.id), user_id=user.id, email=user.email)
+
+
+@router.post("/auth/guest", response_model=TokenOut, status_code=201, tags=["auth"])
+async def guest(request: Request, session: AsyncSession = Depends(get_session)):
+    """One-click demo account with a smaller daily budget, so visitors can try Atlas without signing up."""
+    ip = request.client.host if request.client else "unknown"
+    ok, retry = await get_infra().limiter.hit(f"guest:{ip}", 5, 3600)
+    if not ok:
+        raise HTTPException(429, "Too many guest sessions from this IP", headers={"Retry-After": str(retry)})
+    user = User(email=f"guest-{secrets.token_hex(5)}@{GUEST_DOMAIN}", password_hash=hash_password(secrets.token_urlsafe(24)))
     session.add(user)
     await session.commit()
     return TokenOut(access_token=create_token(user.id), user_id=user.id, email=user.email)
@@ -76,9 +106,7 @@ async def login(body: Credentials, request: Request, session: AsyncSession = Dep
 async def me(user: User = Depends(current_user), session: AsyncSession = Depends(get_session)):
     since = datetime.now(UTC) - timedelta(days=1)
     spent = await session.scalar(select(func.coalesce(func.sum(Run.cost_usd), 0.0)).where(Run.user_id == user.id, Run.created_at >= since))
-    return MeOut(
-        id=user.id, email=user.email, spend_24h_usd=round(float(spent or 0), 6), daily_limit_usd=get_settings().daily_user_cost_usd
-    )
+    return MeOut(id=user.id, email=user.email, spend_24h_usd=round(float(spent or 0), 6), daily_limit_usd=daily_limit(user))
 
 
 # ----------------------------------- conversations -----------------------------------
@@ -133,26 +161,7 @@ async def delete_conversation(cid: str, user: User = Depends(current_user), sess
 
 @router.post("/runs", response_model=RunCreated, status_code=202, tags=["runs"])
 async def create_run(body: RunCreate, user: User = Depends(rate_limited), session: AsyncSession = Depends(get_session)):
-    await check_daily_quota(session, user.id)
-    if body.conversation_id:
-        conv = await _own_conversation(session, body.conversation_id, user)
-        busy = await session.scalar(select(Run.id).where(Run.conversation_id == conv.id, Run.status.in_(["queued", "running"])))
-        if busy:
-            raise HTTPException(409, "A run is already in progress for this conversation")
-    else:
-        title = " ".join(body.message.split())[:60] or "New chat"
-        conv = Conversation(user_id=user.id, title=title)
-        session.add(conv)
-        await session.flush()
-    run = Run(conversation_id=conv.id, user_id=user.id, input=body.message)
-    session.add(run)
-    await session.flush()
-    msg = Message(conversation_id=conv.id, role="user", content=body.message, run_id=run.id)
-    session.add(msg)
-    conv.updated_at = datetime.now(UTC)
-    await session.commit()
-    await dispatch(run.id)
-    return RunCreated(run_id=run.id, conversation_id=conv.id, user_message_id=msg.id, events_url=f"/v1/runs/{run.id}/events")
+    return await start_run(session, user, body.message, body.conversation_id, body.effort)
 
 
 async def _own_run(session: AsyncSession, run_id: str, user_id: str) -> Run:
@@ -244,6 +253,26 @@ async def upload_file(file: UploadFile = File(...), user: User = Depends(rate_li
         return await rag.ingest(session, user.id, name, file.content_type or "application/octet-stream", data)
     except Exception as e:  # corrupt PDF, etc.
         raise HTTPException(422, f"Could not process file: {type(e).__name__}") from e
+
+
+SAMPLES_DIR = Path(__file__).parent / "samples"
+
+
+@router.get("/samples", tags=["files"])
+async def list_samples():
+    return [{"name": p.name, "size_bytes": p.stat().st_size} for p in sorted(SAMPLES_DIR.glob("*")) if p.suffix in rag.SUPPORTED]
+
+
+@router.post("/samples/{name}", response_model=DocumentOut, status_code=201, tags=["files"])
+async def load_sample(name: str, user: User = Depends(rate_limited), session: AsyncSession = Depends(get_session)):
+    """Copy a bundled sample file (sales data, company handbook...) into the caller's workspace."""
+    path = SAMPLES_DIR / Path(name).name
+    if not path.is_file() or path.suffix not in rag.SUPPORTED:
+        raise HTTPException(404, "Sample not found")
+    existing = await session.scalar(select(Document).where(Document.user_id == user.id, Document.filename == path.name))
+    if existing:
+        return existing
+    return await rag.ingest(session, user.id, path.name, "text/plain", path.read_bytes())
 
 
 @router.get("/files", response_model=list[DocumentOut], tags=["files"])

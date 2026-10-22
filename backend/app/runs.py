@@ -22,20 +22,71 @@ from app.infra import get_infra
 from app.llm import get_llm
 from app.logging import log
 from app.metrics import RUN_LATENCY, RUNS, TTFT
-from app.models import Message, Run, utcnow
-from app.tools import ToolContext, default_registry
+from app.models import Conversation, Document, Message, Run, User, utcnow
+from app.schemas import RunCreated
+from app.tools import ToolContext, build_registry
 
+# Effort presets trade latency and cost against depth. They only ever tighten or loosen the agent loop;
+# the per-run USD cap and the daily quotas still apply on top.
+EFFORT = {
+    "fast": {"max_agent_steps": 3, "max_tool_calls_per_run": 4, "enable_reflection": False},
+    "balanced": {},
+    "deep": {"max_agent_steps": 14, "max_tool_calls_per_run": 24, "enable_reflection": True},
+}
 HISTORY_MESSAGES = 20
 HISTORY_CHARS = 24_000
 _background: set[asyncio.Task] = set()
 _arq_pool = None
 
 
-async def check_daily_quota(session: AsyncSession, user_id: str) -> None:
+GUEST_DOMAIN = "guest.atlas"
+
+
+def is_guest(user: User) -> bool:
+    return user.email.endswith("@" + GUEST_DOMAIN)
+
+
+def daily_limit(user: User) -> float:
+    s = get_settings()
+    return s.guest_daily_cost_usd if is_guest(user) else s.daily_user_cost_usd
+
+
+async def check_daily_quota(session: AsyncSession, user: User) -> None:
+    s = get_settings()
     since = datetime.now(UTC) - timedelta(days=1)
-    spent = await session.scalar(select(func.coalesce(func.sum(Run.cost_usd), 0.0)).where(Run.user_id == user_id, Run.created_at >= since))
-    if float(spent or 0) >= get_settings().daily_user_cost_usd:
-        raise HTTPException(429, f"Daily spend limit reached (${get_settings().daily_user_cost_usd:.2f}). Try again tomorrow.")
+    spent = await session.scalar(select(func.coalesce(func.sum(Run.cost_usd), 0.0)).where(Run.user_id == user.id, Run.created_at >= since))
+    limit = daily_limit(user)
+    if float(spent or 0) >= limit:
+        raise HTTPException(429, f"Daily spend limit reached (${limit:.2f}). Try again tomorrow.")
+    if s.global_daily_cost_usd > 0:  # protects a public deployment's model key from being drained
+        total = await session.scalar(select(func.coalesce(func.sum(Run.cost_usd), 0.0)).where(Run.created_at >= since))
+        if float(total or 0) >= s.global_daily_cost_usd:
+            raise HTTPException(503, "This deployment has used today's model budget. Please try again tomorrow.")
+
+
+async def start_run(session: AsyncSession, user: User, message: str, conversation_id: str | None, effort: str = "balanced") -> RunCreated:
+    """Admission + persistence for a new run, shared by the REST API and the MCP server."""
+    await check_daily_quota(session, user)
+    if conversation_id:
+        conv = await session.scalar(select(Conversation).where(Conversation.id == conversation_id, Conversation.user_id == user.id))
+        if conv is None:
+            raise HTTPException(404, "Conversation not found")
+        busy = await session.scalar(select(Run.id).where(Run.conversation_id == conv.id, Run.status.in_(["queued", "running"])))
+        if busy:
+            raise HTTPException(409, "A run is already in progress for this conversation")
+    else:
+        conv = Conversation(user_id=user.id, title=" ".join(message.split())[:60] or "New chat")
+        session.add(conv)
+        await session.flush()
+    run = Run(conversation_id=conv.id, user_id=user.id, input=message, effort=effort if effort in EFFORT else "balanced")
+    session.add(run)
+    await session.flush()
+    msg = Message(conversation_id=conv.id, role="user", content=message, run_id=run.id)
+    session.add(msg)
+    conv.updated_at = datetime.now(UTC)
+    await session.commit()
+    await dispatch(run.id)
+    return RunCreated(run_id=run.id, conversation_id=conv.id, user_message_id=msg.id, events_url=f"/v1/runs/{run.id}/events")
 
 
 async def dispatch(run_id: str) -> None:
@@ -98,12 +149,22 @@ async def execute_run(run_id: str) -> None:
         user_msg = (await session.execute(select(Message).where(Message.run_id == run_id, Message.role == "user"))).scalars().first()
         history = await _history(session, run.conversation_id, run.created_at, user_msg.id if user_msg else None)
         query, user_id, conversation_id = run.input, run.user_id, run.conversation_id
+        settings = settings.model_copy(update=EFFORT.get(run.effort or "balanced", {}))
+        filenames = (
+            (
+                await session.execute(
+                    select(Document.filename).where(Document.user_id == user_id).order_by(Document.created_at.desc()).limit(30)
+                )
+            )
+            .scalars()
+            .all()
+        )
 
     log.info("run.started", run_id=run_id, user_id=user_id)
     await emit({"type": "run.started", "run_id": run_id})
     deps = AgentDeps(
         llm=get_llm(),
-        tools=default_registry(),
+        tools=await build_registry(),
         settings=settings,
         ctx=ToolContext(user_id=user_id, run_id=run_id),
         emit=emit,
@@ -111,7 +172,7 @@ async def execute_run(run_id: str) -> None:
     )
     status, error, state = "completed", None, None
     try:
-        state = await run_agent(history, query, deps)
+        state = await run_agent(history, query, deps, files=list(dict.fromkeys(filenames)))
     except RunCancelled:
         status = "cancelled"
     except Exception as e:  # noqa: BLE001

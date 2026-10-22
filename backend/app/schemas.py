@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
@@ -49,9 +49,13 @@ class ConversationUpdate(BaseModel):
     title: str = Field(min_length=1, max_length=200)
 
 
+Effort = Literal["fast", "balanced", "deep"]
+
+
 class RunCreate(BaseModel):
     message: str = Field(min_length=1, max_length=20_000)
     conversation_id: str | None = None
+    effort: Effort = "balanced"  # latency/cost vs depth: sets step, tool-call and self-review budgets
 
 
 class RunCreated(BaseModel):
@@ -66,6 +70,7 @@ class RunOut(BaseModel):
     id: str
     conversation_id: str
     status: str
+    effort: str = "balanced"
     input: str
     output: str | None
     error: str | None

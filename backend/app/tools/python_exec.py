@@ -1,10 +1,12 @@
 """Code-interpreter tool with three interchangeable backends:
 local (rlimited subprocess) | http (network-isolated sandbox container) | e2b (managed microVMs)."""
 
+import base64
 from typing import Any
 
 import httpx
 
+from app import db
 from app.config import get_settings
 from app.sandbox_runner import run_python
 from app.tools.base import Tool, ToolContext, ToolOutput
@@ -12,13 +14,13 @@ from app.tools.base import Tool, ToolContext, ToolOutput
 MAX_CODE_CHARS = 20_000
 
 
-async def _execute(code: str) -> dict:
+async def _execute(code: str, files: dict[str, bytes]) -> dict:
     s = get_settings()
     if s.sandbox_backend == "http":
         async with httpx.AsyncClient(timeout=s.sandbox_timeout_s + 10) as client:
             r = await client.post(
                 f"{s.sandbox_url}/run",
-                json={"code": code, "timeout_s": s.sandbox_timeout_s},
+                json={"code": code, "timeout_s": s.sandbox_timeout_s, "files": {n: base64.b64encode(d).decode() for n, d in files.items()}},
                 headers={"X-Sandbox-Token": s.sandbox_token or ""},
             )
             r.raise_for_status()
@@ -28,6 +30,8 @@ async def _execute(code: str) -> dict:
 
         sbx = await AsyncSandbox.create(api_key=s.e2b_api_key, timeout=s.sandbox_timeout_s + 30)
         try:
+            for name, data in files.items():
+                await sbx.files.write(f"/home/user/{name}", data)
             ex = await sbx.run_code(code, timeout=s.sandbox_timeout_s)
             images = [
                 {"name": f"out{i}.png", "mime": "image/png", "b64": r.png} for i, r in enumerate(ex.results) if getattr(r, "png", None)
@@ -42,7 +46,7 @@ async def _execute(code: str) -> dict:
             }
         finally:
             await sbx.kill()
-    return await run_python(code, s.sandbox_timeout_s)
+    return await run_python(code, s.sandbox_timeout_s, files)
 
 
 async def python_exec(args: dict[str, Any], ctx: ToolContext) -> ToolOutput:
@@ -51,7 +55,11 @@ async def python_exec(args: dict[str, Any], ctx: ToolContext) -> ToolOutput:
         return ToolOutput("Error: empty code", error=True)
     if len(code) > MAX_CODE_CHARS:
         return ToolOutput(f"Error: code exceeds {MAX_CODE_CHARS} chars", error=True)
-    res = await _execute(code)
+    from app.rag import data_files
+
+    async with db.sessionmaker()() as session:
+        files = await data_files(session, ctx.user_id)
+    res = await _execute(code, files)
     parts = []
     if res.get("stdout"):
         parts.append(f"stdout:\n{res['stdout']}")
@@ -73,7 +81,9 @@ TOOL = Tool(
         "Execute Python 3 code in an isolated sandbox and return stdout/stderr. Use for math, data analysis, "
         "parsing, simulations and charts. numpy, pandas and matplotlib are available. Save charts with "
         "plt.savefig('name.png') - saved images are shown to the user automatically. Always print() results. "
-        "No internet access inside the sandbox. State does not persist between calls."
+        "No internet access inside the sandbox. State does not persist between calls. "
+        "The user's uploaded data files (csv, xlsx, json, txt...) are in the working directory under their "
+        "original filenames, e.g. pd.read_csv('sales.csv')."
     ),
     parameters={
         "type": "object",

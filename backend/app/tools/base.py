@@ -53,6 +53,9 @@ class ToolRegistry:
     def names(self) -> list[str]:
         return list(self._tools)
 
+    def tools(self) -> list[Tool]:
+        return list(self._tools.values())
+
     async def execute(self, name: str, args: dict[str, Any], ctx: ToolContext) -> tuple[ToolOutput, str, list[str]]:
         """Run a tool. Returns (output, text_for_model, guard_flags). Never raises."""
         tool = self._tools.get(name)

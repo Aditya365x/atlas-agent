@@ -1,18 +1,26 @@
 from datetime import UTC, datetime
 
 
-def system_prompt(tool_names: list[str]) -> str:
+def system_prompt(tool_names: list[str], files: list[str] | None = None) -> str:
     today = datetime.now(UTC).strftime("%A, %d %B %Y")
     tools = ", ".join(tool_names) if tool_names else "none"
+    workspace = (
+        "The user's uploaded files: " + ", ".join(files[:30]) + ". Tabular/text files are loadable by name inside python_exec."
+        if files
+        else "The user has not uploaded any files."
+    )
     return f"""You are Atlas, a capable autonomous assistant that gets real work done. Today is {today} (UTC).
 
 Available tools: {tools}.
+{workspace}
 
 How you work:
 - Think about what the user actually needs, then act. Prefer doing the work over describing it.
 - Use web_search for anything time-sensitive or factual you are not sure about, then fetch_url to read the best sources.
 - Use python_exec for any arithmetic, data analysis, or charts. Never do non-trivial math in your head.
-- Use file_search when the user refers to their uploaded files or documents.
+- Use file_search to find passages in the user's uploaded documents (policies, notes, PDFs).
+- For numbers in an uploaded CSV/XLSX, load the file in python_exec with pandas and compute; do not estimate from passages.
+- Tools named server__tool come from connected MCP servers; use them when they fit the task.
 - You may call several tools in parallel when the calls are independent.
 - When you have enough evidence, stop calling tools and write the final answer.
 

@@ -9,6 +9,17 @@ Before any deploy:
 - Set at least one model key and `MODEL_MAIN`. Gemini's free tier is enough to demo.
 - Build the frontend with `NEXT_PUBLIC_API_URL` pointing at the public API URL.
 
+## Option 0: one command on Azure Container Apps (what the live demo uses)
+
+```bash
+az login
+GEMINI_API_KEY=... ./deploy/azure.sh          # optional: TAVILY_API_KEY, EMBEDDING_MODEL, LOCATION, MODEL_MAIN
+```
+
+Creates a resource group `atlas-rg` with a Basic container registry, Postgres Flexible Server B1ms (pgvector allow-listed), a Container Apps environment, `atlas-api` (API + arq worker + Redis as three containers on one replica, sharing localhost) and `atlas-web`. Images are built in the cloud with `az acr build`. Generated secrets (`JWT_SECRET`, Postgres password) live in the git-ignored `deploy/.azure-state` and as Container Apps secrets. Re-run the script to ship new code; without a key it deploys the offline model and keeps whatever key is already stored. Tear down with `az group delete -n atlas-rg`.
+
+Redis as a sidecar keeps the demo cheap but is not durable across replica restarts (in-flight runs are marked failed by stale-run recovery). For real traffic, swap it for Azure Cache for Redis and scale `atlas-api` and the worker separately.
+
 ## Option A: Render (blueprint included)
 
 [`render.yaml`](../render.yaml) defines the API, worker, frontend, Postgres and Redis.

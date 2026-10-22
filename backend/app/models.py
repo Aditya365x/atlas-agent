@@ -3,7 +3,7 @@
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import JSON, DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import JSON, DateTime, Float, ForeignKey, Integer, LargeBinary, String, Text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -57,6 +57,7 @@ class Run(Base):
     conversation_id: Mapped[str] = mapped_column(ForeignKey("conversations.id", ondelete="CASCADE"), index=True)
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     status: Mapped[str] = mapped_column(String(20), default="queued", index=True)
+    effort: Mapped[str] = mapped_column(String(10), default="balanced")
     input: Mapped[str] = mapped_column(Text)
     output: Mapped[str | None] = mapped_column(Text, nullable=True)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -79,6 +80,8 @@ class Document(Base):
     content_type: Mapped[str] = mapped_column(String(100))
     num_chunks: Mapped[int] = mapped_column(Integer, default=0)
     status: Mapped[str] = mapped_column(String(20), default="ready")
+    size_bytes: Mapped[int] = mapped_column(Integer, default=0)
+    raw: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True, deferred=True)  # data files for python_exec
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 

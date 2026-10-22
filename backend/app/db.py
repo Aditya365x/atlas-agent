@@ -50,6 +50,12 @@ async def init_db() -> None:
         await conn.run_sync(Base.metadata.create_all)
     if engine.dialect.name != "postgresql":
         return
+    async with engine.begin() as conn:  # additive columns for databases created by an older version
+        await conn.execute(text("ALTER TABLE documents ADD COLUMN IF NOT EXISTS size_bytes integer DEFAULT 0"))
+        await conn.execute(text("ALTER TABLE documents ADD COLUMN IF NOT EXISTS raw bytea"))
+        await conn.execute(text("ALTER TABLE runs ADD COLUMN IF NOT EXISTS effort varchar(10) DEFAULT 'balanced'"))
+        # full-text index for the lexical half of hybrid retrieval
+        await conn.execute(text("CREATE INDEX IF NOT EXISTS chunks_fts ON chunks USING gin (to_tsvector('english', text))"))
     try:
         async with engine.begin() as conn:
             await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))

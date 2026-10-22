@@ -1,7 +1,7 @@
 # Build context: repository root (needs backend/app/sandbox_runner.py)
 FROM python:3.12-slim
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
-RUN pip install --no-cache-dir fastapi==0.115.* "uvicorn[standard]==0.32.*" numpy pandas matplotlib scipy \
+RUN pip install --no-cache-dir fastapi==0.115.* "uvicorn[standard]==0.32.*" numpy pandas matplotlib scipy openpyxl \
     && useradd --create-home --uid 10001 sandbox
 WORKDIR /srv
 COPY backend/app/sandbox_runner.py sandbox/server.py ./

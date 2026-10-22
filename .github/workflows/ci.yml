@@ -63,6 +63,8 @@ jobs:
           for i in $(seq 1 30); do curl -sf localhost:8000/readyz && break; sleep 1; done
       - name: Offline eval suite (must be 100%)
         run: python evals/run_evals.py --offline --min-pass 1.0
+      - name: Retrieval eval (recall@k / MRR / nDCG, hybrid recall@5 must stay >= 0.85)
+        run: python evals/retrieval_eval.py --min-recall 0.85
       - uses: actions/upload-artifact@v4
         if: always()
         with: { name: eval-report-offline, path: "evals/results/\napi.log" }
