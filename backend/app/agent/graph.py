@@ -26,7 +26,7 @@ from langgraph.graph import END, StateGraph
 from app.agent.guard import redact_secrets
 from app.agent.prompts import CRITIC_PROMPT, PLANNER_PROMPT, system_prompt
 from app.config import Settings
-from app.llm import LLM, LLMResult
+from app.llm import LLM, LLMResult, ToolCall
 from app.tools.base import ToolContext, ToolRegistry
 
 Emit = Callable[[dict[str, Any]], Awaitable[None]]
@@ -89,6 +89,34 @@ def parse_json_obj(text: str) -> dict[str, Any] | None:
         return val if isinstance(val, dict) else None
     except json.JSONDecodeError:
         return None
+
+
+_TEXT_CALL = re.compile(r"<(tool_use|tool_call|function_call)>\s*(\{.*?\})\s*</\1>|```(?:json)?\s*(\{.*?\})\s*```", re.DOTALL)
+
+
+def recover_text_tool_calls(content: str, tool_names: set[str]) -> list[ToolCall]:
+    """Some models occasionally write a tool call as text (`<tool_use>{"function": ..., "arguments": ...}</tool_use>`)
+    instead of using the structured API. Recover calls to *known* tools only; anything else stays plain text."""
+    calls: list[ToolCall] = []
+    for m in _TEXT_CALL.finditer(content or ""):
+        if m.group(3) and m.group(0).strip() != content.strip():
+            continue  # a fenced JSON block counts only when it is the whole reply, not an example inside an answer
+        try:
+            obj = json.loads(m.group(2) or m.group(3))
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(obj, dict):
+            continue
+        name = obj.get("function") or obj.get("name") or obj.get("tool")
+        if isinstance(name, dict):  # {"function": {"name": ..., "arguments": ...}}
+            obj, name = name, name.get("name")
+        args = obj.get("arguments", obj.get("parameters", obj.get("args", {})))
+        if name not in tool_names:
+            continue
+        calls.append(
+            ToolCall(f"call_txt{len(calls)}_{int(time.time() * 1000) % 100000}", name, args if isinstance(args, str) else json.dumps(args))
+        )
+    return calls
 
 
 def compact_messages(messages: list[dict[str, Any]], budget_chars: int, keep_recent: int = 4) -> tuple[list[dict[str, Any]], int]:
@@ -162,6 +190,10 @@ async def agent_node(state: AgentState, config: RunnableConfig) -> AgentState:
 
     await d.emit({"type": "step.started", "step": step, "phase": "answering" if not use_tools else "thinking"})
     r = await d.llm.complete(messages, role="main", tools=d.tools.schemas() if use_tools else None, on_token=on_token)
+    if use_tools and not r.tool_calls and (recovered := recover_text_tool_calls(r.content, set(d.tools.names()))):
+        # The model wrote the call as text instead of using the tool-calling API; run it rather than show raw JSON.
+        await d.emit({"type": "answer.reset", "reason": "tool_call"})
+        r.tool_calls, r.content = recovered, ""
     assistant: dict[str, Any] = {"role": "assistant", "content": r.content or ""}
     if r.tool_calls:
         assistant["tool_calls"] = [

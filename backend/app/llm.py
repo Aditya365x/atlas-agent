@@ -68,6 +68,21 @@ class LLMUnavailable(RuntimeError):
     pass
 
 
+_POLICY_MARKERS = ("content_policy_violation", "content_filter", "ContentPolicyViolation")
+_PROVIDER_MESSAGE = re.compile(r"Message:\s*(?:Upstream error from [^:]+:\s*)?(.*?)(?:,\s*Metadata:|$)", re.DOTALL)
+
+
+def content_policy_refusal(e: Exception) -> str | None:
+    """Some providers (e.g. Inception via OpenRouter) return a safety refusal as an API error. Turn it into the
+    refusal text the user should see; None if the error is anything else."""
+    text = f"{type(e).__name__}: {e}"
+    if not any(m in text for m in _POLICY_MARKERS):
+        return None
+    m = _PROVIDER_MESSAGE.search(str(e))
+    msg = (m.group(1).strip() if m else "") or "I can't help with that request."
+    return msg if len(msg) < 600 else "I can't help with that request."
+
+
 def register_openrouter_prices(models: list[str], fetch: Callable[[], list[dict]] | None = None) -> list[str]:
     """New OpenRouter models are often missing from LiteLLM's price map, which would make every call cost $0
     and silently disable the spend caps. Pull their prices from OpenRouter's public model list instead.
@@ -142,6 +157,14 @@ class LiteLLMRouter(LLM):
                     return result
                 except Exception as e:  # noqa: BLE001 - classify below
                     last_err = e
+                    if (refusal := content_policy_refusal(e)) is not None:
+                        # The provider's safety filter declined. That is an answer, not an outage: retrying or
+                        # falling back to another model would only repeat (or launder) the refusal.
+                        LLM_CALLS.labels(model, "refused").inc()
+                        log.info("llm.refused", model=model, role=role)
+                        if on_token:
+                            await on_token(refusal)
+                        return LLMResult(content=refusal, model=model)
                     LLM_CALLS.labels(model, "error").inc()
                     retry = self._is_retryable(e) and attempt < self.s.llm_max_retries
                     log.warning("llm.error", model=model, attempt=attempt, retry=retry, error=str(e)[:300])

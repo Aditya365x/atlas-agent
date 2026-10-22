@@ -2,11 +2,9 @@
 
 **Live demo: [atlas-web.graymeadow-875698b7.centralindia.azurecontainerapps.io](https://atlas-web.graymeadow-875698b7.centralindia.azurecontainerapps.io)** (one click, no sign-up) · [API docs](https://atlas-api.graymeadow-875698b7.centralindia.azurecontainerapps.io/docs) · MCP endpoint `https://atlas-api.graymeadow-875698b7.centralindia.azurecontainerapps.io/mcp`
 
-> Demo status: the deployment is running the deterministic offline model until a model key is added (`OPENROUTER_API_KEY=... ./deploy/azure.sh`). Tools, sandbox, retrieval, streaming and MCP are all live either way; the model badge at the top of the app shows which model is answering.
-
 Atlas takes a task, plans it, searches the web, reads pages and PDFs, runs Python on your data in a locked-down sandbox, searches your documents with hybrid retrieval, reviews its own answer, and streams every step to a ChatGPT-style UI as it happens. It is also an **MCP server** (any MCP client can delegate tasks to it) and an **MCP client** (it can use tools from other MCP servers).
 
-It is built like a production service, not a notebook demo: durable background runs, resumable streaming, multi-provider model routing with fallbacks, per-user and global budgets, prompt-injection and output guardrails, SSRF protection, Prometheus metrics, 51 automated tests, two eval suites in CI, and a one-command cloud deployment.
+It is built like a production service, not a notebook demo: durable background runs, resumable streaming, multi-provider model routing with fallbacks, per-user and global budgets, prompt-injection and output guardrails, SSRF protection, Prometheus metrics, 53 automated tests, two eval suites in CI, and a one-command cloud deployment.
 
 **Stack:** Python 3.12 · FastAPI · LangGraph · LiteLLM (OpenRouter, Gemini, OpenAI, Anthropic...) · PostgreSQL + pgvector · Redis Streams + arq · MCP (official SDK) · Next.js 16 + React 19 · React Bits · Docker · Azure Container Apps · GitHub Actions
 
@@ -86,9 +84,25 @@ All numbers below come from scripts in this repo; rerun them yourself.
 
 Read this honestly: with the dependency-free hashing embedder, the "dense" retriever is really a weak lexical one, so fusing it in costs BM25 some precision. Identifier and keyword queries are already at 1.00 recall@5 with BM25 and hybrid; paraphrases are where a real embedding model earns its place. Run `EMBEDDING_MODEL=gemini/gemini-embedding-001 python evals/retrieval_eval.py` (and `--rerank llm`) to measure the semantic configuration. The point of the harness is that this choice is made on numbers, per corpus.
 
-**Agent evals** (`python evals/run_evals.py`): 25 black-box tasks across computation, data analysis, RAG, research, direct answers and security (file-borne prompt injection, SSRF to the cloud metadata endpoint, system-prompt extraction). The offline subset runs in CI on every push and passes 9/9; the live suite runs nightly with an LLM judge and writes `evals/results/report.md` with pass rate by category, p50/p95 latency, time to first token, tokens and cost per task.
+**Agent evals** (`python evals/run_evals.py --api <url>`): 25 black-box tasks driven through the public API exactly like a user (sign up, upload files, start runs, stream events), scored with deterministic checks. Latest run against the **live Azure deployment** with `openrouter/inception/mercury-3` (planner `mercury-2.5`):
 
-**Tests**: 51 backend tests (agent loop, budgets, cancellation, router failover, sandbox limits, SSRF, tenant isolation, SSE resume, hybrid search, MCP server and client, data files in the sandbox, guest and global budgets), run on SQLite and again on Postgres + pgvector + Redis.
+| Metric | Result |
+|---|---|
+| Pass rate | **96% (24/25)** |
+| By category | analysis 6/6 · computation 3/4 · direct answers 3/3 · RAG 5/5 · research 4/4 · security 3/3 |
+| Latency p50 / p95 (end to end, incl. tools and self-review) | 9.9 s / 21.7 s |
+| Median time to first token | 0.71 s |
+| Average cost per task | $0.0015 |
+| Average tokens per task | ~12.5k |
+
+The miss: on "how many primes are below 100,000?" Mercury sometimes answers from memory (correctly) instead of running Python as the system prompt requires; the eval counts that as a failure because unverified arithmetic is the habit the check exists to catch. The offline subset (9 tasks, deterministic model) runs in CI on every push at 100%.
+
+What the live evals found and fixed (the reason to run them against real models):
+- **Provider safety refusals crashed runs.** Inception returns its content-filter refusals as API errors; Atlas treated that as an outage, tried the fallback and failed the run. Refusals are now returned as the answer, without retries.
+- **Tool calls written as text.** The model occasionally wrote `<tool_use>{...}</tool_use>` in its reply instead of calling the tool. Atlas now recovers calls to known tools (never unknown ones, never code examples inside an answer).
+- **Two wrong tests.** A RAG task expected "not mentioned" although the sample handbook does contain the policy (the agent was right), and the injection test failed answers that *quoted* the attack while correctly refusing it. Both checks were fixed to test the behaviour, not the wording.
+
+**Tests**: 53 backend tests (agent loop, budgets, cancellation, router failover, provider refusals, text tool-call recovery, sandbox limits, SSRF, tenant isolation, SSE resume, hybrid search, MCP server and client, data files in the sandbox, guest and global budgets), run on SQLite and again on Postgres + pgvector + Redis.
 
 **Load** (`loadtest/k6.js`, offline model, 4 API processes, 1 worker): 150/150 concurrent runs completed, ~15 runs/s, p95 9.9s end to end (bounded by worker concurrency). The first attempt failed a third of runs with Postgres `too many clients`; the fix was an explicit per-process connection budget, documented in the config.
 

@@ -114,3 +114,17 @@ async def test_cancellation():
 def test_parse_json_handles_fences_and_chatter():
     assert parse_json_obj('Sure!\n```json\n{"score": 8, "feedback": ""}\n```') == {"score": 8, "feedback": ""}
     assert parse_json_obj("no json here") is None
+
+
+def test_tool_calls_written_as_text_are_recovered_for_known_tools_only():
+    from app.agent.graph import recover_text_tool_calls
+
+    names = {"python_exec", "web_search"}
+    text = '<tool_use>\n{"function": "python_exec", "arguments": {"code": "print(2+2)"}}\n</tool_use>'
+    [call] = recover_text_tool_calls(text, names)
+    assert call.name == "python_exec" and json.loads(call.arguments) == {"code": "print(2+2)"}
+    assert recover_text_tool_calls('<tool_call>{"name": "rm_rf", "arguments": {}}</tool_call>', names) == []
+    assert recover_text_tool_calls('```json\n{"name": "web_search", "arguments": {"query": "x"}}\n```', names)[0].name == "web_search"
+    example = 'Here is an example call:\n```json\n{"name": "web_search", "arguments": {}}\n```\nHope that helps.'
+    assert recover_text_tool_calls(example, names) == []  # a code example inside an answer is not a call
+    assert recover_text_tool_calls("The answer is 42.", names) == []
